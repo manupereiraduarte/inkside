@@ -1,0 +1,76 @@
+## ===============================
+## Unity .gitignore
+## Proyecto: inkside
+## ===============================
+
+# Carpetas generadas automáticamente por Unity
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Carpetas de Auto-generación de Assets
+[Aa]ssets/AssetStoreTools*
+[Aa]ssets/Plugins/Editor/JetBrains*
+
+# Archivos generados por Visual Studio / VS Code / Rider
+.vs/
+.vscode/
+.idea/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Archivos de compilación
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# Archivos de Crashlytics generados
+crashlytics-build.properties
+
+# Archivos ocultos del sistema operativo
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Configuraciones locales de Unity (dependen de cada máquina/usuario)
+/[Aa]ssets/[Ss]treamingAssets.meta
+
+# Archivos de Occlusion Culling generados
+/[Aa]ssets/[Aa]uto[Ss]treaming.meta
+
+# Archivos generados por paquetes / cachés
+[Ll]ibrary.zip
+[Aa]ssetbundles/
+/[Pp]ackages/com.unity.assetstore-tools/
+
+# Archivos de compilación de Addressables
+/[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*/*.bin*
+/[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*.bin*
+
+# Archivos de licencias / claves locales
+*.pfx
+*.keystore
