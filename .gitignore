@@ -74,3 +74,6 @@ desktop.ini
 # Archivos de licencias / claves locales
 *.pfx
 *.keystore
+
+# Log del builder de escenas (Inkside > Build All Scenes por CLI)
+build_log.txt
