@@ -173,6 +173,103 @@ namespace Inkside.EditorTools
                 Fmt(capsule.position));
         }
 
+        [MenuItem("Inkside/Apoyar el jugador en el piso (escena abierta)")]
+        public static void GroundActiveScene()
+        {
+            var scene = SceneManager.GetActiveScene();
+            string note = Ground(scene);
+            EditorUtility.DisplayDialog("inkside", note, "OK");
+        }
+
+        /// <summary>
+        /// Baja (o sube) al jugador hasta el piso, sin moverlo de su XZ. Para saber CUÁL es el piso se usa la
+        /// base del objeto de referencia de la escena: Gandalf, el zorro y Dumbledore están parados donde el
+        /// jugador tiene que estar parado. De todas las superficies que haya bajo el jugador se elige la más
+        /// cercana a esa altura, no la más alta: así no se lo sube al techo del modelo ni se lo deja en el piso
+        /// de respaldo que queda por debajo de todo.
+        /// </summary>
+        public static string Ground(Scene scene)
+        {
+            SizeRule rule = null;
+            foreach (var r in Rules)
+                if (r.Scene == scene.name) { rule = r; break; }
+            if (rule == null) return string.Format("'{0}' no tiene regla de tamaño de jugador.", scene.name);
+
+            GameObject player = null;
+            Transform reference = null;
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                if (root.name == "Player") player = root;
+                foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                    if (t.name == rule.ReferenceObject && reference == null) reference = t;
+            }
+            if (player == null) return string.Format("(!) '{0}' no tiene un objeto 'Player'.", scene.name);
+            if (reference == null)
+                return string.Format("(!) '{0}': no se encontró '{1}'.", scene.name, rule.ReferenceObject);
+
+            float referenceFloor;
+            if (!TryMeasureBase(reference.gameObject, out referenceFloor))
+                return string.Format("(!) '{0}': '{1}' no tiene renderers visibles.", scene.name, rule.ReferenceObject);
+
+            var capsule = FindChild(player.transform, "PlayerCapsule");
+            if (capsule == null) return string.Format("(!) '{0}': el Player no tiene 'PlayerCapsule'.", scene.name);
+            var cc = capsule.GetComponent<CharacterController>();
+            if (cc == null) return string.Format("(!) '{0}': PlayerCapsule sin CharacterController.", scene.name);
+
+            Physics.SyncTransforms();
+
+            Vector3 feet = capsule.position;
+            var origin = new Vector3(feet.x, referenceFloor + 20f, feet.z);
+            var hits = Physics.RaycastAll(origin, Vector3.down, 40f, ~0, QueryTriggerInteraction.Ignore);
+
+            bool found = false;
+            float best = 0f;
+            foreach (var hit in hits)
+            {
+                if (Vector3.Dot(hit.normal, Vector3.up) < 0.7f) continue; // paredes y techos no son piso
+                if (hit.collider.transform.IsChildOf(player.transform)) continue;
+                if (!found || Mathf.Abs(hit.point.y - referenceFloor) < Mathf.Abs(best - referenceFloor))
+                {
+                    best = hit.point.y;
+                    found = true;
+                }
+            }
+
+            if (!found)
+                return string.Format(
+                    "(!) '{0}': no se encontró ninguna superficie bajo el jugador (XZ {1:0.##}, {2:0.##}). " +
+                    "Movelo a mano sobre el piso.", scene.name, feet.x, feet.z);
+
+            float targetFeet = best + 0.05f;   // 5 cm de aire: el CharacterController lo apoya al arrancar
+            float delta = targetFeet - feet.y;
+            player.transform.position += new Vector3(0f, delta, 0f);
+            EditorUtility.SetDirty(player);
+            Physics.SyncTransforms();
+
+            return string.Format(
+                "{0}: jugador {1} {2:0.##} m. Pies de {3:0.##} a {4:0.##} (piso en {5:0.##}, " +
+                "referencia '{6}' apoyada en {7:0.##}).",
+                scene.name, delta >= 0f ? "subido" : "bajado", Mathf.Abs(delta),
+                feet.y, targetFeet, best, rule.ReferenceObject, referenceFloor);
+        }
+
+        /// <summary>Y más baja del AABB de los renderers activos: donde el objeto apoya.</summary>
+        static bool TryMeasureBase(GameObject go, out float baseY)
+        {
+            baseY = 0f;
+            Bounds bounds = default(Bounds);
+            bool any = false;
+            foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!r.gameObject.activeInHierarchy || !r.enabled) continue;
+                if (!any) { bounds = r.bounds; any = true; }
+                else bounds.Encapsulate(r.bounds);
+            }
+            if (!any) return false;
+            baseY = bounds.min.y;
+            return true;
+        }
+
         /// <summary>Altura en metros de mundo del AABB de todos los renderers activos del objeto.</summary>
         static bool TryMeasureHeight(GameObject go, out float height)
         {
