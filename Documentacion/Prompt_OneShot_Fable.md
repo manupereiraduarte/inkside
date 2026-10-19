@@ -54,7 +54,7 @@ Esta prefab se instancia igual en las 4 escenas.
 
 ### 3. Scripts C# a crear
 
-Creá exactamente estos archivos con esta interfaz pública (la implementación interna queda a tu criterio, pero los nombres de campos serializados deben respetarse porque el script de Editor del paso 6 los va a referenciar por reflexión/asignación directa):
+Creá exactamente estos archivos con esta interfaz pública (la implementación interna queda a tu criterio, pero los nombres de campos serializados deben respetarse porque el script de Editor los va a asignar). **Para asignarlos desde `InksideSceneBuilder.cs`, usá `SerializedObject`/`SerializedProperty` + `ApplyModifiedProperties()` — no reflection cruda ni asignación directa del campo privado.** Es la forma correcta de que Unity registre el cambio como una modificación real de la instancia de prefab; con reflection puede que el valor "se vea" seteado en memoria pero no quede bien serializado al guardar la escena.
 
 **`Assets/Scripts/Core/IInteractable.cs`**
 ```csharp
@@ -69,7 +69,9 @@ public interface IInteractable
 - `[SerializeField] float interactionRange = 3f`
 - `[SerializeField] KeyCode interactKey = KeyCode.E`
 - `[SerializeField] InteractionPromptUI promptUI`
-- En `Update()`: `Physics.Raycast` desde el centro de la cámara; si golpea un collider con `IInteractable`, mostrar `promptUI.Show(GetInteractionPrompt())`; si no, `promptUI.Hide()`. Si se presiona `interactKey` mientras hay un `IInteractable` detectado, llamar `Interact()`.
+- En `Update()`: `Physics.Raycast` desde el centro de la cámara.
+  - Si el rayo golpea un collider con `IInteractable`: mostrar `promptUI.Show(GetInteractionPrompt())`, y si se presiona `interactKey` ese mismo frame, llamar `Interact()`.
+  - **Si el rayo no golpea nada, o golpea algo sin `IInteractable`: llamar `promptUI.Hide()` de inmediato.** Sin esto el cartel `[E] Interactuar` queda pegado en pantalla para siempre después de la primera vez que se mira un objeto interactuable.
 
 **`Assets/Scripts/Interaccion/SceneTeleport.cs`** (en los 3 libros de la biblioteca) — implementa `IInteractable`
 - `[SerializeField] string targetSceneName`
@@ -107,7 +109,17 @@ No agregues sistemas que no estén pedidos acá (sin AudioManager global, sin si
 
 ### 4. Script de Editor: construcción automática de las 4 escenas
 
-Creá `Assets/Scripts/Editor/InksideSceneBuilder.cs` con un método estático marcado `[MenuItem("Inkside/Build All Scenes")]` **y** invocable también vía `-executeMethod Inkside.EditorTools.InksideSceneBuilder.BuildAllScenes` (o el namespace/método que definas — anotalo en tu respuesta final para que se pueda invocar por CLI). Este método debe, para cada una de las 4 escenas:
+Creá `Assets/Scripts/Editor/InksideSceneBuilder.cs` con un método estático marcado `[MenuItem("Inkside/Build All Scenes")]` **y** invocable también vía `-executeMethod Inkside.EditorTools.InksideSceneBuilder.BuildAllScenes` (o el namespace/método que definas — anotalo en tu respuesta final para que se pueda invocar por CLI).
+
+**Antes de tocar ninguna escena, una sola vez al arrancar el método:** asegurate de que los recursos esenciales de TextMeshPro estén importados. En un proyecto recién creado (como este) TMP todavía no los tiene, y sin ellos los `TMP_Text` que arma el paso 5 se ven rosa/magenta o tiran `NullReferenceException` por no tener fuente por defecto. Intentá:
+```csharp
+#if UNITY_EDITOR
+TMPro.EditorUtilities.TMP_PackageUtilities.ImportProjectResourcesMenu();
+#endif
+```
+Si ese método no existe en la versión de TMP que resolvió el Package Manager (la API interna cambió entre versiones), buscá el equivalente actual o, como fallback, verificá si ya existe `Resources.Load<TMPro.TMP_Settings>("TMP Settings")` (no nulo = ya están importados) y si no, dejalo documentado como paso manual pendiente (`Window > TextMeshPro > Import TMP Essential Resources`, un solo click, una sola vez).
+
+Este método debe, para cada una de las 4 escenas:
 
 1. Crear una nueva escena **vacía de verdad**: `EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single)` — **no** uses el overload por defecto, porque crea una Main Camera y una Directional Light propias de Unity que van a duplicar/chocar con las nuestras (2 `AudioListener` activos, luces de más).
 2. Armar la jerarquía estándar:
@@ -120,13 +132,14 @@ Creá `Assets/Scripts/Editor/InksideSceneBuilder.cs` con un método estático ma
    ```
 3. Cargar cada modelo con `AssetDatabase.LoadAssetAtPath<GameObject>("<ruta exacta del manifiesto>")` e instanciarlo dentro de `Environment` o `Interactables` según corresponda.
 4. **Colliders — paso obligatorio, no lo saltees:** ningún modelo `.glb` importado trae collider (ni glTFast ni ningún importador de Unity los agrega solo). Sin esto el raycast de interacción no detecta nada y el jugador atraviesa las paredes.
-   - En cada modelo de `Environment` (interior del mundo): si no tiene ya un collider (`GetComponentInChildren<Collider>() == null`), agregale un `MeshCollider` con `convex = false` sobre su mesh principal.
-   - En cada libro/anillo/rosa/snitch de `Interactables`: agregale un `BoxCollider` (no trigger) dimensionado con `GetComponentInChildren<Renderer>().bounds` — no hace falta que sea pixel-perfect, tiene que ser suficiente para que el raycast le pegue.
-   - En cada NPC: el `BoxCollider` con `isTrigger = true` que ya requiere `DialogueTrigger` (sección 3) — dimensionalo también por bounds, un poco más grande que el modelo para que el trigger de proximidad se sienta natural.
+   - **Importante:** un `.glb` importado casi nunca tiene la geometría en el GameObject raíz — glTFast suele traer un nodo padre vacío con la mesh real uno o más niveles abajo, en los hijos. Si le agregás el `MeshCollider` a la raíz sin `MeshFilter` propio, el collider queda vacío y no colisiona con nada.
+   - En cada modelo de `Environment` (interior del mundo): recorré `GetComponentsInChildren<MeshFilter>()` y agregale un `MeshCollider` (`convex = false`, es geometría estática) a **cada** GameObject que tenga una mesh real — no asumas que hay uno solo ni que está en la raíz. Salteá los que ya tengan collider.
+   - En cada libro/anillo/rosa/snitch de `Interactables`: agregale un `BoxCollider` (no trigger) en la raíz del objeto, dimensionado combinando **todos** los `Renderer` de sus hijos (`GetComponentsInChildren<Renderer>()`, acumulando con `Bounds.Encapsulate`) — no uses un solo `Renderer` suelto, puede haber varias sub-mallas (ej. tapa + páginas de un libro) y dejarte afuera parte del modelo. No hace falta que sea pixel-perfect, tiene que ser suficiente para que el raycast le pegue.
+   - En cada NPC: el `BoxCollider` con `isTrigger = true` que ya requiere `DialogueTrigger` (sección 3) — dimensionalo con el mismo criterio de bounds combinados, un poco más grande que el modelo para que el trigger de proximidad se sienta natural.
 5. Para cada libro/NPC/objetivo, agregar el script correspondiente (`SceneTeleport`, `DialogueTrigger`, `ObjectTargetReturn`) y **asignar los valores de campo exactos** que están en la tabla "Configuración por objeto" más abajo (nombre de escena destino, clip de audio vía `AssetDatabase.LoadAssetAtPath<AudioClip>`, texto de diálogo) **más las referencias cruzadas al Canvas de esta misma escena**: `RaycastInteractor.promptUI`, cada `DialogueTrigger.dialoguePanel`, y el `fader` de **cada** `SceneTeleport` y `ObjectTargetReturn` (los cuatro apuntan a los componentes correspondientes de la instancia de `Canvas_UI.prefab` que acabás de crear en esta escena — son 4 asignaciones separadas, no una sola).
 6. Posicionar los objetos con transforms aproximados y razonables (ej. jugador en el origen mirando hacia el punto focal del mundo, NPC a 2-3 metros, objetivo en un punto distinto y visible). Dejá un comentario `// TODO ajustar en Fase B` en cada posición hardcodeada — no hay forma de saber la escala/pivote real de cada `.glb` sin abrirlo visualmente. La posición Y de spawn del jugador es la que más conviene revisar primero en Fase B: si queda por debajo del piso real del modelo, el `CharacterController` cae indefinidamente y da la falsa impresión de que "no funciona nada".
 7. Ninguno de los NPCs ni la Snitch llevan IA de movimiento ni animación de vuelo — son props estáticos (a lo sumo un bob/rotación decorativa simple si querés, pero no es obligatorio). No implementes nada de "perseguir al jugador" ni "escapar" aunque la narrativa del GDD hable de la Snitch "revoloteando" — es solo ambientación.
-8. Guardar la escena en `Assets/_Escenas/<NombreEscena>.unity`.
+8. Guardar la escena: `EditorSceneManager.MarkSceneDirty(scene)` y después `EditorSceneManager.SaveScene(scene, "Assets/_Escenas/<NombreEscena>.unity")` — pasále siempre la ruta explícita, no dependas de un guardado implícito.
 9. Al final, agregar las 4 escenas a Build Settings (`EditorBuildSettings.scenes`) en este orden: `00_Biblioteca`, `01_LotR`, `02_Principito`, `03_HarryPotter`.
 10. Loguear (`Debug.Log`) un resumen de qué se creó y qué quedó pendiente de ajuste manual.
 
@@ -232,6 +245,7 @@ Las referencias cruzadas al Canvas (`promptUI`, `dialoguePanel`, `fader`) están
 - [ ] Cada libro/NPC/objetivo de la tabla de la sección 6 tiene su script con los campos asignados, **incluyendo `promptUI`/`dialoguePanel`/`fader`** (no solo los campos "de contenido" como el texto o el audio).
 - [ ] Cada modelo de `Environment` y cada `Interactable` tiene un Collider (no confiar en que el `.glb` ya lo trae).
 - [ ] `target_cursor.png` y `panel_dialogo.png` quedaron con import type "Sprite (2D and UI)".
+- [ ] Los recursos esenciales de TextMeshPro están importados (los textos no se ven rosa/magenta).
 - [ ] Cada escena tiene un solo `AudioListener` activo (si aparece el warning de Unity de "2 audio listeners", es porque `NewScene` se llamó sin `NewSceneSetup.EmptyScene`).
 - [ ] `build_log.txt` (si pudiste correr el build) no tiene excepciones.
 - [ ] Documentaste en tu respuesta final: qué se automatizó, qué quedó pendiente de Fase B (ver GDD sección 5), y el comando exacto para correr `InksideSceneBuilder` si el usuario tiene que hacerlo manualmente.

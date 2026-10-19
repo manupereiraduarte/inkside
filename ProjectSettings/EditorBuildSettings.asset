@@ -6,7 +6,16 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/SampleScene.unity
-    guid: 99c9720ab356a0642a771bea13969a05
+    path: Assets/_Escenas/00_Biblioteca.unity
+    guid: 72a99a1144191064c97c075edcd88041
+  - enabled: 1
+    path: Assets/_Escenas/01_LotR.unity
+    guid: 8723bd5aba828fe4ea2b89c02e807277
+  - enabled: 1
+    path: Assets/_Escenas/02_Principito.unity
+    guid: 63950cd66666de34bbf1a666f00ac3b8
+  - enabled: 1
+    path: Assets/_Escenas/03_HarryPotter.unity
+    guid: ebf20684630184040be229ecd766017d
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
