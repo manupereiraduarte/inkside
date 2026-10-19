@@ -28,19 +28,27 @@ namespace Inkside.EditorTools
         class SizeRule
         {
             public string Scene;
-            public string ReferenceObject; // objeto de la escena que se mide para sacar la altura
+            public string ReferenceObject; // objeto de la escena que se mide; también define el piso en Ground()
             public float Factor = 1f;      // altura = alturaDeLaReferencia * Factor + Offset
             public float Offset;
+            public float FixedHeight;      // > 0 = altura absoluta, ignora la referencia
             public float Radius;
+            public float SpeedScale = 1f;  // ajuste fino sobre la velocidad que ya sale de la altura
+            public float StepOffset;       // 0 = se deduce de la altura
             public string Why;
         }
 
         static readonly SizeRule[] Rules =
         {
+            // La mesa quedó de 23 cm al acomodarla, así que "1 m más alto que la mesa" daba un jugador de
+            // 1,23 m que además trepaba la mesa: el step offset de 25 cm era mayor que la mesa entera.
+            // Acá la altura es absoluta, el paso no llega a la tapa de la mesa, y la velocidad baja a algo
+            // que se lea como caminar en una sala de 4,5 m en vez de como trotar.
             new SizeRule
             {
-                Scene = "00_Biblioteca", ReferenceObject = "wooden_table", Offset = 1f, Radius = 0.22f,
-                Why = "1 m más alto que la mesa",
+                Scene = "00_Biblioteca", ReferenceObject = "wooden_table",
+                FixedHeight = 1.05f, Radius = 0.22f, SpeedScale = 0.6f, StepOffset = 0.15f,
+                Why = "altura fija para la sala chica, sin poder subirse a la mesa",
             },
             new SizeRule
             {
@@ -98,7 +106,7 @@ namespace Inkside.EditorTools
                 return string.Format("(!) '{0}': '{1}' no tiene renderers visibles, no se puede medir.",
                     scene.name, rule.ReferenceObject);
 
-            float height = refHeight * rule.Factor + rule.Offset;
+            float height = rule.FixedHeight > 0f ? rule.FixedHeight : refHeight * rule.Factor + rule.Offset;
             if (height < 0.3f)
                 return string.Format("(!) '{0}': la regla da una altura de {1:0.##} m, demasiado baja. Se cancela.",
                     scene.name, height);
@@ -136,13 +144,15 @@ namespace Inkside.EditorTools
             cc.height = height;
             cc.radius = radius;
             cc.center = new Vector3(0f, centerY, 0f);
-            cc.stepOffset = Mathf.Min(0.25f, height * 0.25f);
+            // El step offset es lo que el jugador trepa sin saltar. Tiene que quedar por debajo de los muebles
+            // de la escena o se les sube caminando de frente.
+            cc.stepOffset = rule.StepOffset > 0f ? rule.StepOffset : Mathf.Min(0.25f, height * 0.25f);
 
             // 5. El FirstPersonController vive en el assembly de Starter Assets: se busca por nombre de tipo
             //    para no tener que referenciarlo desde un script de editor.
             //    GroundedOffset se deduce del radio para que la esfera del chequeo de piso asome siempre 5 cm
             //    por debajo de los pies: con el valor fijo original, un radio chico la dejaba sin tocar el suelo.
-            float speedFactor = height / ReferenceHeight;
+            float speedFactor = height / ReferenceHeight * rule.SpeedScale;
             foreach (var mb in capsule.GetComponents<MonoBehaviour>())
             {
                 if (mb == null || mb.GetType().Name != "FirstPersonController") continue;
@@ -167,10 +177,13 @@ namespace Inkside.EditorTools
             Physics.SyncTransforms();
 
             return string.Format(
-                "{0}: jugador de {1:0.##} m de alto x {2:0.##} m de radio, ojo a {3:0.##} m " +
-                "({4}; '{5}' mide {6:0.##} m). Velocidad x{7:0.##}. Pies en {8}.",
-                scene.name, height, radius, eye, rule.Why, rule.ReferenceObject, refHeight, speedFactor,
-                Fmt(capsule.position));
+                "{0}: jugador de {1:0.##} m de alto x {2:0.##} m de radio, ojo a {3:0.##} m.\n" +
+                "{4}.\n" +
+                "Camina a {5:0.##} m/s (corre a {6:0.##}), trepa hasta {7:0.##} m.\n" +
+                "'{8}' mide {9:0.##} m. Pies en {10}.",
+                scene.name, height, radius, eye, rule.Why,
+                4f * speedFactor, 6f * speedFactor, cc.stepOffset,
+                rule.ReferenceObject, refHeight, Fmt(capsule.position));
         }
 
         [MenuItem("Inkside/Apoyar el jugador en el piso (escena abierta)")]

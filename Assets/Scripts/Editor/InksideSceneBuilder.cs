@@ -880,7 +880,7 @@ namespace Inkside.EditorTools
                 // Al NPC se le deja algo más de margen porque las mallas de personaje son angostas y de brazos
                 // separados: un AABB pegado al modelo deja huecos por donde el rayo se le escapa.
                 bool isNpc = item.Kind == Kind.Npc;
-                var box = AddBoxCollider(go, false, isNpc ? 1.1f : 1.05f, isNpc ? 0.5f : 0.25f);
+                var box = AddBoxCollider(go, false, isNpc ? 1.1f : 1.15f, isNpc ? 0.5f : 0.35f);
 
                 switch (item.Kind)
                 {
@@ -967,6 +967,11 @@ namespace Inkside.EditorTools
             //     gana sobre lo que calculo la fisica, que es justamente el punto de guardarlo.
             Report.AppendLine("  " + InksideLayout.TryApply(spec.Name, scene));
             Physics.SyncTransforms();
+
+            // 6.d Los colliders se dimensionaron antes de reaplicar el layout, asi que si ahi se movio un hijo
+            //     de un modelo quedaron desfasados de la geometria. Se recalculan al final sobre lo que hay.
+            Report.AppendLine("  " + InksideColliderFit.Fit(scene).Split('
+')[0]);
 
             // 7. Guardar
             string scenePath = $"{ScenesFolder}/{spec.Name}.unity";
