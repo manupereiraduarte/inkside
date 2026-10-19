@@ -28,7 +28,7 @@ namespace Inkside.EditorTools
         {
             var scene = SceneManager.GetActiveScene();
             string note = Fit(scene);
-            EditorUtility.DisplayDialog("inkside", note, "OK");
+            EditorUtility.DisplayDialog("inkside", note + "\n\nEl detalle objeto por objeto está en la Console.", "OK");
         }
 
         public static string Fit(Scene scene)
@@ -93,7 +93,7 @@ namespace Inkside.EditorTools
             string head = string.Format("{0}: {1} colliders reajustados{2}.",
                 scene.name, done, skipped > 0 ? string.Format(", {0} salteados", skipped) : "");
             Debug.Log("[InksideColliderFit] " + head + "\n" + log);
-            return head + "\n\n" + log;
+            return head;
         }
 
         /// <summary>

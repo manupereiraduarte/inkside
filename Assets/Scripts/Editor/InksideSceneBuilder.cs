@@ -970,8 +970,7 @@ namespace Inkside.EditorTools
 
             // 6.d Los colliders se dimensionaron antes de reaplicar el layout, asi que si ahi se movio un hijo
             //     de un modelo quedaron desfasados de la geometria. Se recalculan al final sobre lo que hay.
-            Report.AppendLine("  " + InksideColliderFit.Fit(scene).Split('
-')[0]);
+            Report.AppendLine("  " + InksideColliderFit.Fit(scene));
 
             // 7. Guardar
             string scenePath = $"{ScenesFolder}/{spec.Name}.unity";
