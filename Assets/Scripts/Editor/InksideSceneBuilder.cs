@@ -75,8 +75,7 @@ namespace Inkside.EditorTools
 
             public string TargetScene;
             public string SfxPath;
-            public string NpcName;
-            public string Dialogue;
+            public string DialogueSpritePath; // tarjeta de diálogo del NPC (imagen con nombre y texto adentro)
             public string LoopSfxPath;    // AudioSource 3D en loop sobre el propio objeto
         }
 
@@ -233,8 +232,7 @@ namespace Inkside.EditorTools
                 },
                 Items = new[]
                 {
-                    new InteractableSpec { Name = "Gandalf", ModelPath = "Assets/_Mundos/01_LotR/Modelos/gandalf_blanco.glb", Kind = Kind.Npc, TargetSize = 1.8f, Offset = new Vector3(0.8f, 0f, 3f), Yaw = 180f, NpcName = "Gandalf",
-                        Dialogue = "Llegas a tiempo, viajero. La sombra en el Este se extiende y el destino de la Tierra Media pende de un hilo. Encuentra el Anillo Único antes de que su llamada atraiga al enemigo." },
+                    new InteractableSpec { Name = "Gandalf", ModelPath = "Assets/_Mundos/01_LotR/Modelos/gandalf_blanco.glb", Kind = Kind.Npc, TargetSize = 1.8f, Offset = new Vector3(0.8f, 0f, 3f), Yaw = 180f, DialogueSpritePath = "Assets/_Mundos/01_LotR/Texturas/dialogo_gandalf.jpg" },
                     new InteractableSpec { Name = "Anillo_Unico", ModelPath = "Assets/_Mundos/01_LotR/Modelos/one_ring.glb", Kind = Kind.Target, TargetSize = 0.06f, Grounded = false, Offset = new Vector3(-1.8f, 1.2f, 2.2f), SfxPath = "Assets/_Mundos/01_LotR/Audio/SFX/ring_whisper.mp3" },
                 },
                 AmbientPath = "Assets/_Mundos/01_LotR/Audio/Ambiente/countryside_birds_ambient.mp3",
@@ -266,8 +264,7 @@ namespace Inkside.EditorTools
                 },
                 Items = new[]
                 {
-                    new InteractableSpec { Name = "El_Zorro", ModelPath = "Assets/_Mundos/02_Principito/Modelos/fox.glb", Kind = Kind.Npc, TargetSize = 0.7f, Offset = new Vector3(1f, 0f, 3.5f), Yaw = 180f, NpcName = "El Zorro",
-                        Dialogue = "Solo con el corazón se puede ver bien; lo esencial es invisible para los ojos. Encuentra la rosa que mi amigo dejó protegida antes de que el frío del espacio la marchite." },
+                    new InteractableSpec { Name = "El_Zorro", ModelPath = "Assets/_Mundos/02_Principito/Modelos/fox.glb", Kind = Kind.Npc, TargetSize = 0.7f, Offset = new Vector3(1f, 0f, 3.5f), Yaw = 180f, DialogueSpritePath = "Assets/_Mundos/02_Principito/Texturas/dialogo_zorro.jpg" },
                     // Del otro lado de la cima: hay que caminar y rodear el asteroide para encontrarla.
                     new InteractableSpec { Name = "Rosa", ModelPath = "Assets/_Mundos/02_Principito/Modelos/rose.glb", Kind = Kind.Target, TargetSize = 0.8f, RequireLineOfSight = false, Offset = new Vector3(-2f, 0f, -14f), SfxPath = "Assets/_Mundos/02_Principito/Audio/SFX/glass_sparkle.mp3" },
                 },
@@ -290,8 +287,7 @@ namespace Inkside.EditorTools
                 },
                 Items = new[]
                 {
-                    new InteractableSpec { Name = "Dumbledore", ModelPath = "Assets/_Mundos/03_HarryPotter/Modelos/dumbledore.glb", Kind = Kind.Npc, TargetSize = 1.8f, Offset = new Vector3(0.8f, 0f, 3f), Yaw = 180f, NpcName = "Dumbledore",
-                        Dialogue = "Ah, viajero, llegas en buen momento. Un pequeño problema se nos ha escapado de las manos... o mejor dicho, de las alas. Una Snitch Dorada se liberó durante la última práctica de Quidditch y anda revoloteando libre por mi oficina. ¿Serías tan amable de atraparla antes de que rompa algo... otra vez?" },
+                    new InteractableSpec { Name = "Dumbledore", ModelPath = "Assets/_Mundos/03_HarryPotter/Modelos/dumbledore.glb", Kind = Kind.Npc, TargetSize = 1.8f, Offset = new Vector3(0.8f, 0f, 3f), Yaw = 180f, DialogueSpritePath = "Assets/_Mundos/03_HarryPotter/Texturas/dialogo_dumbledore.jpg" },
                     new InteractableSpec { Name = "Snitch_Dorada", ModelPath = "Assets/_Mundos/03_HarryPotter/Modelos/golden_snitch.glb", Kind = Kind.Target, TargetSize = 0.28f /* envergadura de alas, agrandada para que se pueda encontrar */, Grounded = false, Offset = new Vector3(-1.8f, 1.6f, 2.2f), SfxPath = "Assets/_Mundos/03_HarryPotter/Audio/SFX/magic_grab.mp3", LoopSfxPath = "Assets/_Mundos/03_HarryPotter/Audio/SFX/fluttering_wings.mp3" },
                 },
                 AmbientPath = "Assets/_Mundos/03_HarryPotter/Audio/Ambiente/magic_mystery_ambient.mp3",
@@ -350,9 +346,19 @@ namespace Inkside.EditorTools
             }
         }
 
-        static Sprite EnsureSprite(string path)
+        /// <summary>
+        /// Deja la textura importada como Sprite (2D and UI). Con highQuality fuerza compresión alta:
+        /// las tarjetas de diálogo traen el texto dibujado adentro y la compresión por defecto lo ensucia.
+        /// </summary>
+        static Sprite EnsureSprite(string path, bool highQuality = false)
         {
             var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer == null)
+            {
+                // Puede no estar importada todavía (por ejemplo un .jpg recién agregado al repo).
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
+                importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            }
             if (importer == null)
             {
                 _errors++;
@@ -360,14 +366,24 @@ namespace Inkside.EditorTools
                 return null;
             }
 
-            if (importer.textureType != TextureImporterType.Sprite || importer.spriteImportMode != SpriteImportMode.Single)
+            var wantedCompression = highQuality ? TextureImporterCompression.CompressedHQ : TextureImporterCompression.Compressed;
+            bool needsReimport =
+                importer.textureType != TextureImporterType.Sprite ||
+                importer.spriteImportMode != SpriteImportMode.Single ||
+                importer.textureCompression != wantedCompression ||
+                importer.maxTextureSize != 2048 ||
+                importer.mipmapEnabled;
+
+            if (needsReimport)
             {
                 importer.textureType = TextureImporterType.Sprite;
                 importer.spriteImportMode = SpriteImportMode.Single;
                 importer.alphaIsTransparency = true;
                 importer.mipmapEnabled = false;
+                importer.maxTextureSize = 2048;
+                importer.textureCompression = wantedCompression;
                 importer.SaveAndReimport();
-                Log($"Textura {Path.GetFileName(path)}: import type cambiado a Sprite (2D and UI).");
+                Log($"Textura {Path.GetFileName(path)}: Sprite (2D and UI), {wantedCompression}, máx 2048.");
             }
 
             var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
@@ -529,41 +545,22 @@ namespace Inkside.EditorTools
             SetRef(promptUI, "promptText", promptTmp);
 
             // --- DialoguePanel
-            // Sin el sprite panel_dialogo.png: mide 547x365 y el panel lo estiraba a ~1459x292, deformándolo
-            // 2.7x a lo ancho. Queda una banda negra translúcida generada por código, que no se deforma nunca,
-            // con el texto en blanco encima.
+            // Una sola imagen: cada personaje tiene su tarjeta con el nombre y el texto ya dibujados adentro,
+            // así que no hay TMP_Text que componer ni fondo que dibujar. preserveAspect porque son 16:9 con
+            // fondo propio y estirarlas las arruina.
+            // TODO ajustar en Fase B: tamaño (≈60% del ancho) y posición (centro-abajo) elegidos a ciegas.
             var panel = NewRect("DialoguePanel", canvasGO.transform);
-            panel.anchorMin = new Vector2(0.15f, 0.06f);
-            panel.anchorMax = new Vector2(0.85f, 0.26f);
+            panel.anchorMin = new Vector2(0.20f, 0.05f);
+            panel.anchorMax = new Vector2(0.80f, 0.65f);
             panel.offsetMin = panel.offsetMax = Vector2.zero;
             var panelImg = panel.gameObject.AddComponent<Image>();
-            panelImg.sprite = null;
+            panelImg.sprite = null;                 // lo asigna DialogueTrigger según el NPC
+            panelImg.color = Color.white;
+            panelImg.preserveAspect = true;
             panelImg.raycastTarget = false;
-            panelImg.color = new Color(0f, 0f, 0f, 0.5f);
             var panelUI = panel.gameObject.AddComponent<DialoguePanelUI>();
-
-            var nameText = NewRect("NPCNameText", panel);
-            nameText.anchorMin = new Vector2(0.04f, 0.66f);
-            nameText.anchorMax = new Vector2(0.96f, 0.95f);
-            nameText.offsetMin = nameText.offsetMax = Vector2.zero;
-            var nameTmp = nameText.gameObject.AddComponent<TextMeshProUGUI>();
-            SetupText(nameTmp, font, "Nombre", 30f, TextAlignmentOptions.Left, new Color(1f, 0.85f, 0.5f));
-            nameTmp.fontStyle = FontStyles.Bold;
-
-            var bodyText = NewRect("DialogueBodyText", panel);
-            bodyText.anchorMin = new Vector2(0.04f, 0.06f);
-            bodyText.anchorMax = new Vector2(0.96f, 0.64f);
-            bodyText.offsetMin = bodyText.offsetMax = Vector2.zero;
-            var bodyTmp = bodyText.gameObject.AddComponent<TextMeshProUGUI>();
-            SetupText(bodyTmp, font, "Línea de diálogo", 24f, TextAlignmentOptions.TopLeft, Color.white);
-            bodyTmp.textWrappingMode = TextWrappingModes.Normal;
-            bodyTmp.enableAutoSizing = true;
-            bodyTmp.fontSizeMin = 16f;
-            bodyTmp.fontSizeMax = 24f;
-
-            SetRef(panelUI, "npcNameText", nameTmp);
-            SetRef(panelUI, "dialogueBodyText", bodyTmp);
-            panel.gameObject.SetActive(false); // oculto por defecto
+            SetRef(panelUI, "dialogueImage", panelImg);
+            panel.gameObject.SetActive(false);      // oculto por defecto
 
             // --- FadeImage (último hijo: se dibuja encima de todo)
             var fade = NewRect("FadeImage", canvasGO.transform);
@@ -892,8 +889,7 @@ namespace Inkside.EditorTools
                     case Kind.Npc:
                     {
                         var dt = go.AddComponent<DialogueTrigger>();
-                        SetString(dt, "npcName", item.NpcName);
-                        SetString(dt, "dialogueLine", item.Dialogue);
+                        SetRef(dt, "dialogueSprite", EnsureSprite(item.DialogueSpritePath, true));
                         SetRef(dt, "dialoguePanel", dialoguePanel);
                         break;
                     }

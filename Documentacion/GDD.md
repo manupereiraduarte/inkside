@@ -51,7 +51,7 @@ Acción: apuntar a un libro + `[E]` → `book_page_turn.mp3` → fundido a negro
 
 **Encuentro NPC (El Zorro):** `fox.glb`, sin cambios en el diálogo:
 
-> *"Solo con el corazón se puede ver bien; lo esencial es invisible para los ojos. Encuentra la rosa que mi amigo dejó protegida antes de que el frío del espacio la marchite."*
+> *"Solo con el corazón se puede ver bien; lo esencial es invisible a los ojos. Encuentra la rosa que mi amigo dejó protegida antes de que el frío del espacio la marchite."*
 
 **Misión y resolución:** el jugador encuentra la **Rosa** (`rose.glb` — confirmado: el modelo ya incluye la campana de cristal). Al interactuar: `glass_sparkle.mp3`, destello blanco, regreso a la biblioteca.
 
@@ -67,7 +67,7 @@ Acción: apuntar a un libro + `[E]` → `book_page_turn.mp3` → fundido a negro
 
 **Encuentro NPC (Dumbledore) — diálogo nuevo:**
 
-> *"Ah, viajero, llegas en buen momento. Un pequeño problema se nos ha escapado de las manos... o mejor dicho, de las alas. Una Snitch Dorada se liberó durante la última práctica de Quidditch y anda revoloteando libre por mi oficina. ¿Serías tan amable de atraparla antes de que rompa algo... otra vez?"*
+> *"Ah, joven mago, llegas en buen momento. Un pequeño problema se nos ha escapado de las manos... o mejor dicho, de las alas. Una Snitch Dorada se liberó durante la última práctica de Quidditch y anda revoloteando libre por mi oficina. ¿Serías tan amable de atraparla antes de que rompa algo... otra vez?"*
 
 **Misión:** el jugador explora la oficina guiado por un zumbido metálico constante (`fluttering_wings.mp3`, en bucle, idealmente como sonido 3D posicional que crece de volumen al acercarse al objetivo).
 
@@ -101,6 +101,7 @@ Reemplaza al catálogo "mínimo viable" del GDD original por el inventario real 
 | NPC: Gandalf (versión Blanco) | `Modelos/gandalf_blanco.glb` | ✅ |
 | Objetivo: Anillo Único | `Modelos/one_ring.glb` | ✅ |
 | SFX: susurro del anillo | `Audio/SFX/ring_whisper.mp3` | ✅ |
+| Tarjeta de diálogo de Gandalf | `Texturas/dialogo_gandalf.jpg` | ✅ 2752×1536, texto incluido |
 | Ambiente: pájaros/campo | `Audio/Ambiente/countryside_birds_ambient.mp3` | ✅ |
 | Crepitar de chimenea | — | 🚫 descartado a propósito (el modelo no tiene chimenea) |
 
@@ -113,6 +114,7 @@ Reemplaza al catálogo "mínimo viable" del GDD original por el inventario real 
 | Terreno: superficie de asteroide | `Modelos/asteroide_superficie.glb` | ✅ (reutilizado de un modelo de luna) |
 | Farol de calle antiguo | `Modelos/farol_calle.glb` | ✅ |
 | SFX: campanillas de cristal | `Audio/SFX/glass_sparkle.mp3` | ✅ |
+| Tarjeta de diálogo del Zorro | `Texturas/dialogo_zorro.jpg` | ✅ 2752×1536, texto incluido |
 | Ambiente: sintetizador espacial | `Audio/Ambiente/space_ambient_pad.mp3` | ✅ |
 | Skybox espacial / textura de suelo | `Texturas/` | ❌ a confirmar si el material ya viene embebido en los `.glb` |
 
@@ -125,6 +127,7 @@ Reemplaza al catálogo "mínimo viable" del GDD original por el inventario real 
 | Objetivo: Snitch Dorada | `Modelos/golden_snitch.glb` | ✅ |
 | SFX: aleteo continuo | `Audio/SFX/fluttering_wings.mp3` | ✅ |
 | SFX: atrapar la Snitch | `Audio/SFX/magic_grab.mp3` | ✅ |
+| Tarjeta de diálogo de Dumbledore | `Texturas/dialogo_dumbledore.jpg` | ✅ 2752×1536, texto incluido |
 | Ambiente: música mágica | `Audio/Ambiente/magic_mystery_ambient.mp3` | ✅ |
 | Caldero / frascos de poción | — | 🚫 descartados (pivot a oficina, ya no aplican) |
 
@@ -195,10 +198,9 @@ ObjectTargetReturn : MonoBehaviour, IInteractable   — en Anillo / Rosa / Snitc
   Interact() -> reproduce SFX, oculta visualToHide, fader.FadeOutThenLoad(hubSceneName)
 
 DialogueTrigger : MonoBehaviour      — en cada NPC, con BoxCollider IsTrigger (NO usa IInteractable/raycast)
-  [SerializeField] string npcName
-  [SerializeField, TextArea] string dialogueLine
+  [SerializeField] Sprite dialogueSprite        // tarjeta del personaje: trae el nombre y el texto dibujados adentro
   [SerializeField] DialoguePanelUI dialoguePanel
-  OnTriggerEnter(Collider other) -> si other.CompareTag("Player"): dialoguePanel.Show(npcName, dialogueLine)
+  OnTriggerEnter(Collider other) -> si other.CompareTag("Player"): dialoguePanel.Show(dialogueSprite)
   OnTriggerExit(Collider other)  -> si other.CompareTag("Player"): dialoguePanel.Hide()
 
 ScreenFader : MonoBehaviour          — en el Canvas de cada escena (no persiste entre escenas, cada escena trae el suyo)
@@ -212,11 +214,14 @@ InteractionPromptUI : MonoBehaviour  — UI común
   public void Hide()
 
 DialoguePanelUI : MonoBehaviour      — UI común
-  public void Show(string npcName, string line)
+  [SerializeField] Image dialogueImage          // una sola Image con preserveAspect, sin TMP_Text
+  public void Show(Sprite sprite)
   public void Hide()
 ```
 
-🔄 **Decisión sobre el diálogo de NPCs:** el diagrama del GDD original era ambiguo (mostraba tanto el raycast como el trigger de proximidad para NPCs). Se resuelve así: **el diálogo de NPC se dispara automáticamente al entrar en su radio (BoxCollider trigger), sin necesidad de apretar `[E]`** — es más cinematográfico y evita que el jugador se pierda el diálogo. El raycast + `[E]` queda reservado para libros y objetos recolectables.
+🔄 **Decisión sobre el formato del diálogo:** el diálogo de cada NPC no se compone en runtime con texto, sino que es **una imagen por personaje** que ya trae el nombre y el texto dibujados adentro (`dialogo_gandalf.jpg`, `dialogo_zorro.jpg`, `dialogo_dumbledore.jpg`, 2752×1536, ~16:9). El panel es una única `Image` con `preserveAspect = true`, centrada y ocupando alrededor del 60% del ancho de pantalla. Se eligió así porque la versión anterior (banda negra translúcida con dos `TMP_Text`) se veía mal, y porque estas imágenes traen su propia ambientación (la de Gandalf incluye el fondo de velas alrededor del pergamino). Las tres se importan con compresión alta (`CompressedHQ`, máx. 2048) para que el texto chico no se ensucie. `panel_dialogo.png` queda sin usar, pero no se borra.
+
+🔄 **Decisión sobre el disparo del diálogo de NPCs:** el diagrama del GDD original era ambiguo (mostraba tanto el raycast como el trigger de proximidad para NPCs). Se resuelve así: **el diálogo de NPC se dispara automáticamente al entrar en su radio (BoxCollider trigger), sin necesidad de apretar `[E]`** — es más cinematográfico y evita que el jugador se pierda el diálogo. El raycast + `[E]` queda reservado para libros y objetos recolectables.
 
 ### 4.4 Transición entre escenas (fundido a negro)
 
