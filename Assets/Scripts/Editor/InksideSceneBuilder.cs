@@ -959,6 +959,15 @@ namespace Inkside.EditorTools
             lightRoot.transform.SetSiblingIndex(3);
             canvasInstance.transform.SetSiblingIndex(4);
 
+            // 6.b Tamano del jugador segun la regla de esta escena (se mide un personaje del mundo, asi que
+            //     tiene que ir despues de crear los interactuables).
+            Report.AppendLine("  " + InksidePlayerSizer.Apply(scene));
+
+            // 6.c Reaplicar el acomodado manual (Fase B). Va al final a proposito: lo que se ajusto a mano
+            //     gana sobre lo que calculo la fisica, que es justamente el punto de guardarlo.
+            Report.AppendLine("  " + InksideLayout.TryApply(spec.Name, scene));
+            Physics.SyncTransforms();
+
             // 7. Guardar
             string scenePath = $"{ScenesFolder}/{spec.Name}.unity";
             EditorSceneManager.MarkSceneDirty(scene);
