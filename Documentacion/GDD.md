@@ -162,8 +162,10 @@ Ya instalados en el proyecto (`C:\Users\manup\TP-CDEV\TP-inkside`):
 |---|---|---|
 | `MainCamera` | `Runtime/FirstPersonController/Prefabs/MainCamera.prefab` | Cámara real que renderiza, con `CinemachineBrain`. **Acá va `RaycastInteractor.cs`** — no es hijo del jugador, es un objeto hermano. |
 | `PlayerFollowCamera` | `Runtime/FirstPersonController/Prefabs/PlayerFollowCamera.prefab` | Cinemachine Virtual Camera. Su campo `Follow` ya viene apuntando (dentro del prefab) al `PlayerCameraRoot` de `PlayerCapsule` — no hace falta recablear nada. |
-| `PlayerCapsule` | `Runtime/FirstPersonController/Prefabs/PlayerCapsule.prefab` | `CharacterController` + `FirstPersonController.cs`. **Acá va el tag `"Player"`** — es el único de los 4 con collider físico, el que realmente entra en los triggers de los NPC. |
+| `PlayerCapsule` | `Runtime/FirstPersonController/Prefabs/PlayerCapsule.prefab` | `CharacterController` + `FirstPersonController.cs`. **Acá va el tag `"Player"`** — es el único de los 4 con collider físico. |
 | `UI_EventSystem` | `Runtime/Mobile/Prefabs/EventSystem/UI_EventSystem.prefab` | EventSystem estándar, necesario para que la UI/Canvas funcione. |
+
+🔄 **Tamaño del jugador:** el `PlayerCapsule` de Starter Assets viene de 2 m de alto por 1 m de ancho con el ojo a 1,375 m, y a esa escala los dioramas parecen de juguete (la Biblioteca mide 4,5 m) y el metro de ancho se traba en cualquier pasillo. El builder lo reduce a **1,70 m de alto, 0,30 m de radio y ojo a 1,20 m** (constantes `CcHeight` / `CcRadius` / `CcCenterY` / `EyeHeight` en `InksideSceneBuilder.cs`, que son también las que usa la búsqueda de spawn por física). No alcanza con el `CharacterController`: la altura real de la cámara en primera persona la da `PlayerCameraRoot` (es el *Tracking Target* de la `CinemachineCamera`), el `FirstPersonController` tiene su propio `GroundedRadius` para el chequeo de piso, y la cápsula visible es un hijo aparte.
 
 Para no instanciar 4 prefabs sueltos en cada una de las 4 escenas, conviene agruparlos una sola vez bajo un GameObject vacío y guardar eso como `Assets/_Comunes/Jugador/PlayerInkside.prefab` (mismo truco que usa el propio asset en `NestedParent_Unpack.prefab` — Unity soporta prefabs anidados así). Si el anidado da problemas en el Editor, la alternativa es "Unpack Completely" sobre la instancia en cada escena, tal como sugiere el nombre original (`_Unpack`).
 
@@ -197,11 +199,14 @@ ObjectTargetReturn : MonoBehaviour, IInteractable   — en Anillo / Rosa / Snitc
   [SerializeField] string hubSceneName = "00_Biblioteca"
   Interact() -> reproduce SFX, oculta visualToHide, fader.FadeOutThenLoad(hubSceneName)
 
-DialogueTrigger : MonoBehaviour      — en cada NPC, con BoxCollider IsTrigger (NO usa IInteractable/raycast)
-  [SerializeField] Sprite dialogueSprite        // tarjeta del personaje: trae el nombre y el texto dibujados adentro
+DialogueTrigger : MonoBehaviour, IInteractable   — en cada NPC, con BoxCollider SÓLIDO (no trigger)
+  [SerializeField] string npcName                // nombre para el prompt: "Gandalf", "el Zorro", "Dumbledore"
+  [SerializeField] Sprite dialogueSprite         // tarjeta del personaje: trae el nombre y el texto dibujados adentro
   [SerializeField] DialoguePanelUI dialoguePanel
-  OnTriggerEnter(Collider other) -> si other.CompareTag("Player"): dialoguePanel.Show(dialogueSprite)
-  OnTriggerExit(Collider other)  -> si other.CompareTag("Player"): dialoguePanel.Hide()
+  [SerializeField] float closeDistance = 6f
+  GetInteractionPrompt() -> "[E] Charlar con {npcName}", o "[E] Cerrar" si la tarjeta ya está abierta
+  Interact() -> alterna dialoguePanel.Show(dialogueSprite) / Hide()
+  Update() -> si el jugador se aleja más de closeDistance con la tarjeta abierta, la cierra
 
 ScreenFader : MonoBehaviour          — en el Canvas de cada escena (no persiste entre escenas, cada escena trae el suyo)
   [SerializeField] CanvasGroup fadeGroup
@@ -221,7 +226,7 @@ DialoguePanelUI : MonoBehaviour      — UI común
 
 🔄 **Decisión sobre el formato del diálogo:** el diálogo de cada NPC no se compone en runtime con texto, sino que es **una imagen por personaje** que ya trae el nombre y el texto dibujados adentro (`dialogo_gandalf.jpg`, `dialogo_zorro.jpg`, `dialogo_dumbledore.jpg`, 2752×1536, ~16:9). El panel es una única `Image` con `preserveAspect = true`, centrada y ocupando alrededor del 60% del ancho de pantalla. Se eligió así porque la versión anterior (banda negra translúcida con dos `TMP_Text`) se veía mal, y porque estas imágenes traen su propia ambientación (la de Gandalf incluye el fondo de velas alrededor del pergamino). Las tres se importan con compresión alta (`CompressedHQ`, máx. 2048) para que el texto chico no se ensucie. `panel_dialogo.png` queda sin usar, pero no se borra.
 
-🔄 **Decisión sobre el disparo del diálogo de NPCs:** el diagrama del GDD original era ambiguo (mostraba tanto el raycast como el trigger de proximidad para NPCs). Se resuelve así: **el diálogo de NPC se dispara automáticamente al entrar en su radio (BoxCollider trigger), sin necesidad de apretar `[E]`** — es más cinematográfico y evita que el jugador se pierda el diálogo. El raycast + `[E]` queda reservado para libros y objetos recolectables.
+🔄 **Decisión sobre el disparo del diálogo de NPCs:** el diagrama del GDD original era ambiguo (mostraba tanto el raycast como el trigger de proximidad para NPCs). Se resuelve a favor del **raycast + `[E]`, igual que los libros**: apuntando al personaje aparece `[E] Charlar con Gandalf` (o `el Zorro` / `Dumbledore`) y recién al apretar la tecla se abre la tarjeta; volver a apretarla la cierra, y si el jugador se va caminando con la tarjeta abierta se cierra sola a los 6 m. Se probó primero la versión por proximidad y resultaba molesta: la imagen aparecía sola al pasar cerca, tapando la pantalla sin que el jugador la hubiera pedido. Consecuencia técnica: el collider del NPC tiene que ser **sólido**, no trigger, porque `RaycastInteractor` consulta con `QueryTriggerInteraction.Ignore`; de paso el jugador deja de atravesar a los personajes. Ahora los tres tipos de interacción (libro, objetivo, NPC) usan el mismo mecanismo, así que `IInteractable` es el único camino de interacción del juego.
 
 ### 4.4 Transición entre escenas (fundido a negro)
 

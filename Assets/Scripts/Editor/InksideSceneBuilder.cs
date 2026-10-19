@@ -63,6 +63,7 @@ namespace Inkside.EditorTools
         class InteractableSpec
         {
             public string Name;
+            public string DisplayName;  // nombre tal como aparece en el prompt "[E] Charlar con ..."; vacío = se deriva de Name
             public string ModelPath;
             public Kind Kind;
             public float TargetSize;    // 0 = no se escala
@@ -232,7 +233,7 @@ namespace Inkside.EditorTools
                 },
                 Items = new[]
                 {
-                    new InteractableSpec { Name = "Gandalf", ModelPath = "Assets/_Mundos/01_LotR/Modelos/gandalf_blanco.glb", Kind = Kind.Npc, TargetSize = 1.8f, Offset = new Vector3(0.8f, 0f, 3f), Yaw = 180f, DialogueSpritePath = "Assets/_Mundos/01_LotR/Texturas/dialogo_gandalf.jpg" },
+                    new InteractableSpec { Name = "Gandalf", DisplayName = "Gandalf", ModelPath = "Assets/_Mundos/01_LotR/Modelos/gandalf_blanco.glb", Kind = Kind.Npc, TargetSize = 1.8f, Offset = new Vector3(0.8f, 0f, 3f), Yaw = 180f, DialogueSpritePath = "Assets/_Mundos/01_LotR/Texturas/dialogo_gandalf.jpg" },
                     new InteractableSpec { Name = "Anillo_Unico", ModelPath = "Assets/_Mundos/01_LotR/Modelos/one_ring.glb", Kind = Kind.Target, TargetSize = 0.06f, Grounded = false, Offset = new Vector3(-1.8f, 1.2f, 2.2f), SfxPath = "Assets/_Mundos/01_LotR/Audio/SFX/ring_whisper.mp3" },
                 },
                 AmbientPath = "Assets/_Mundos/01_LotR/Audio/Ambiente/countryside_birds_ambient.mp3",
@@ -264,7 +265,7 @@ namespace Inkside.EditorTools
                 },
                 Items = new[]
                 {
-                    new InteractableSpec { Name = "El_Zorro", ModelPath = "Assets/_Mundos/02_Principito/Modelos/fox.glb", Kind = Kind.Npc, TargetSize = 0.7f, Offset = new Vector3(1f, 0f, 3.5f), Yaw = 180f, DialogueSpritePath = "Assets/_Mundos/02_Principito/Texturas/dialogo_zorro.jpg" },
+                    new InteractableSpec { Name = "El_Zorro", DisplayName = "el Zorro", ModelPath = "Assets/_Mundos/02_Principito/Modelos/fox.glb", Kind = Kind.Npc, TargetSize = 0.7f, Offset = new Vector3(1f, 0f, 3.5f), Yaw = 180f, DialogueSpritePath = "Assets/_Mundos/02_Principito/Texturas/dialogo_zorro.jpg" },
                     // Del otro lado de la cima: hay que caminar y rodear el asteroide para encontrarla.
                     new InteractableSpec { Name = "Rosa", ModelPath = "Assets/_Mundos/02_Principito/Modelos/rose.glb", Kind = Kind.Target, TargetSize = 0.8f, RequireLineOfSight = false, Offset = new Vector3(-2f, 0f, -14f), SfxPath = "Assets/_Mundos/02_Principito/Audio/SFX/glass_sparkle.mp3" },
                 },
@@ -287,7 +288,7 @@ namespace Inkside.EditorTools
                 },
                 Items = new[]
                 {
-                    new InteractableSpec { Name = "Dumbledore", ModelPath = "Assets/_Mundos/03_HarryPotter/Modelos/dumbledore.glb", Kind = Kind.Npc, TargetSize = 1.8f, Offset = new Vector3(0.8f, 0f, 3f), Yaw = 180f, DialogueSpritePath = "Assets/_Mundos/03_HarryPotter/Texturas/dialogo_dumbledore.jpg" },
+                    new InteractableSpec { Name = "Dumbledore", DisplayName = "Dumbledore", ModelPath = "Assets/_Mundos/03_HarryPotter/Modelos/dumbledore.glb", Kind = Kind.Npc, TargetSize = 1.8f, Offset = new Vector3(0.8f, 0f, 3f), Yaw = 180f, DialogueSpritePath = "Assets/_Mundos/03_HarryPotter/Texturas/dialogo_dumbledore.jpg" },
                     new InteractableSpec { Name = "Snitch_Dorada", ModelPath = "Assets/_Mundos/03_HarryPotter/Modelos/golden_snitch.glb", Kind = Kind.Target, TargetSize = 0.28f /* envergadura de alas, agrandada para que se pueda encontrar */, Grounded = false, Offset = new Vector3(-1.8f, 1.6f, 2.2f), SfxPath = "Assets/_Mundos/03_HarryPotter/Audio/SFX/magic_grab.mp3", LoopSfxPath = "Assets/_Mundos/03_HarryPotter/Audio/SFX/fluttering_wings.mp3" },
                 },
                 AmbientPath = "Assets/_Mundos/03_HarryPotter/Audio/Ambiente/magic_mystery_ambient.mp3",
@@ -445,13 +446,14 @@ namespace Inkside.EditorTools
             var capsule = InstantiatePrefabChild(PlayerCapsulePrefab, root.transform, "PlayerCapsule");
             var eventSystem = InstantiatePrefabChild(EventSystemPrefab, root.transform, "UI_EventSystem");
 
-            // Mismas posiciones relativas que NestedParent_Unpack.prefab (cámaras 1.375 m sobre el capsule).
+            // Mismas posiciones relativas que NestedParent_Unpack.prefab, pero a la altura de ojo reducida.
             if (capsule != null) capsule.transform.localPosition = Vector3.zero;
-            if (mainCamera != null) mainCamera.transform.localPosition = new Vector3(0f, 1.375f, 0f);
-            if (followCamera != null) followCamera.transform.localPosition = new Vector3(0f, 1.375f, 0f);
+            if (mainCamera != null) mainCamera.transform.localPosition = new Vector3(0f, EyeHeight, 0f);
+            if (followCamera != null) followCamera.transform.localPosition = new Vector3(0f, EyeHeight, 0f);
             if (eventSystem != null) eventSystem.transform.localPosition = Vector3.zero;
 
             if (capsule != null && capsule.tag != "Player") capsule.tag = "Player";
+            if (capsule != null) ResizePlayer(capsule);
 
             if (mainCamera != null)
             {
@@ -484,6 +486,48 @@ namespace Inkside.EditorTools
             }
             else Log("Prefab creado: " + PlayerPrefabPath);
             return prefab;
+        }
+
+        /// <summary>
+        /// Encoge el PlayerCapsule de Starter Assets a las medidas de <see cref="CcHeight"/>, <see cref="CcRadius"/>
+        /// y <see cref="EyeHeight"/>. Hay que tocar cuatro cosas, no sólo el CharacterController: la altura real de
+        /// la cámara en primera persona la da PlayerCameraRoot (es el Tracking Target de la CinemachineCamera, así
+        /// que mover sólo las cámaras no alcanza), el chequeo de piso del FirstPersonController tiene su propio
+        /// radio, y la cápsula visible es un hijo aparte que sin escalar queda flotando en el editor.
+        /// </summary>
+        static void ResizePlayer(GameObject capsule)
+        {
+            var cc = capsule.GetComponent<CharacterController>();
+            if (cc != null)
+            {
+                cc.height = CcHeight;
+                cc.radius = CcRadius;
+                cc.center = new Vector3(0f, CcCenterY, 0f);
+            }
+            else Debug.LogWarning("[InksideSceneBuilder] PlayerCapsule sin CharacterController: no se pudo redimensionar el jugador.");
+
+            // FirstPersonController vive en el assembly de Starter Assets; se busca por nombre de tipo para no
+            // tener que referenciarlo desde el script de editor.
+            foreach (var mb in capsule.GetComponents<MonoBehaviour>())
+            {
+                if (mb == null || mb.GetType().Name != "FirstPersonController") continue;
+                SetFloat(mb, "GroundedRadius", CcRadius);
+                break;
+            }
+
+            var camRoot = FindDeepChild(capsule.transform, "PlayerCameraRoot");
+            if (camRoot != null) camRoot.localPosition = new Vector3(0f, EyeHeight, 0f);
+            else Debug.LogWarning("[InksideSceneBuilder] No se encontró PlayerCameraRoot: la cámara queda a la altura original.");
+
+            // La cápsula visible es la primitiva de Unity: 2 m de alto y 1 m de diámetro con escala 1.
+            var visual = FindDeepChild(capsule.transform, "Capsule");
+            if (visual != null)
+            {
+                visual.localPosition = new Vector3(0f, CcCenterY, 0f);
+                visual.localScale = new Vector3(CcRadius / 0.5f, CcHeight / 2f, CcRadius / 0.5f);
+            }
+
+            Log($"Jugador redimensionado: alto {CcHeight:0.##} m, radio {CcRadius:0.##} m, ojo a {EyeHeight:0.##} m");
         }
 
         static GameObject InstantiatePrefabChild(string path, Transform parent, string name)
@@ -750,7 +794,7 @@ namespace Inkside.EditorTools
             // Origen de colocación: todo lo demás se ubica RELATIVO al jugador y a su dirección de mirada,
             // así los offsets "+Z = adelante" del spec caen siempre en el campo visual inicial.
             var placeOrigin = new Vector3(spawnRoot.x, groundY, spawnRoot.z);
-            Vector3 eye = spawnRoot + new Vector3(0f, 1.375f, 0f);
+            Vector3 eye = spawnRoot + new Vector3(0f, EyeHeight, 0f);
             var playerRoot = playerInstance.transform;
 
             // Props no-room (mesa, farol, asteroide), apoyados en el piso y esquivando geometría
@@ -831,8 +875,12 @@ namespace Inkside.EditorTools
                     placeNote = PlaceClear(go, placeOrigin, facing, facingYaw, item.Offset, item.Yaw, item.Grounded, eye, item.RequireLineOfSight, playerRoot);
                 }
 
+                // Todos los interactuables se apuntan con el rayo, así que TODOS llevan collider sólido:
+                // RaycastInteractor consulta con QueryTriggerInteraction.Ignore y un trigger le sería invisible.
+                // Al NPC se le deja algo más de margen porque las mallas de personaje son angostas y de brazos
+                // separados: un AABB pegado al modelo deja huecos por donde el rayo se le escapa.
                 bool isNpc = item.Kind == Kind.Npc;
-                var box = AddBoxCollider(go, isNpc, isNpc ? 1.6f : 1.05f, isNpc ? 1.5f : 0.25f);
+                var box = AddBoxCollider(go, false, isNpc ? 1.1f : 1.05f, isNpc ? 0.5f : 0.25f);
 
                 switch (item.Kind)
                 {
@@ -889,6 +937,7 @@ namespace Inkside.EditorTools
                     case Kind.Npc:
                     {
                         var dt = go.AddComponent<DialogueTrigger>();
+                        SetString(dt, "npcName", string.IsNullOrEmpty(item.DisplayName) ? item.Name.Replace('_', ' ') : item.DisplayName);
                         SetRef(dt, "dialogueSprite", EnsureSprite(item.DialogueSpritePath, true));
                         SetRef(dt, "dialoguePanel", dialoguePanel);
                         break;
@@ -1313,8 +1362,17 @@ namespace Inkside.EditorTools
         }
 
         // ================================================================== COLOCACIÓN POR FÍSICA
-        // Medidas del CharacterController de PlayerCapsule.prefab (height 2, radius 0.5, center (0, 0.93, 0)).
-        const float CcHeight = 2f, CcRadius = 0.5f, CcCenterY = 0.93f;
+        // Medidas del jugador. El PlayerCapsule de Starter Assets viene de 2 m de alto por 1 m de ancho con el
+        // ojo a 1,375 m: en una biblioteca de 4,5 m, o encima de una mesa de 1,4 m, eso hace que todo el diorama
+        // parezca de juguete, y el metro de ancho se traba en cualquier pasillo. Acá se usa un jugador más bajo
+        // y mucho más angosto, manteniendo la proporción ojo/altura del original (~0,69).
+        // Estos cuatro valores son el único lugar donde se ajusta el tamaño: BuildPlayerPrefab los aplica al
+        // CharacterController, al chequeo de piso, a PlayerCameraRoot y a las cámaras, y la búsqueda de spawn
+        // usa la misma cápsula para comprobar que el jugador entre.
+        const float CcHeight = 1.7f;
+        const float CcRadius = 0.3f;
+        const float CcCenterY = CcHeight / 2f - 0.06f;  // la base queda apenas por debajo del origen, como en el prefab original
+        const float EyeHeight = 1.2f;
 
         /// <summary>Espacio libre mínimo debajo de un objetivo flotante para que no parezca apoyado en algo.</summary>
         const float MinFloatClearance = 1.2f;
@@ -1403,7 +1461,7 @@ namespace Inkside.EditorTools
         /// <summary>Devuelve el yaw con más espacio libre delante, para que el jugador no arranque mirando una pared.</summary>
         static float FindOpenYaw(Vector3 rootPos)
         {
-            var eye = rootPos + new Vector3(0f, 1.375f, 0f);
+            var eye = rootPos + new Vector3(0f, EyeHeight, 0f);
             float bestClearance = -1f, bestYaw = 0f;
             for (int i = 0; i < 24; i++)
             {
