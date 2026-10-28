@@ -69,8 +69,11 @@ Para salir del modo de juego, apretá **▶ Play** otra vez.
 | Correr | Mantener `Shift` |
 | Saltar | `Espacio` |
 | **Interactuar** | **`E`** |
+| Salir del juego | `Esc` (solo en el `.exe`) |
 
 También funciona un joystick para caminar, mirar, correr y saltar. **Interactuar es solo con la tecla `E`.**
+
+En el Editor, `Esc` no cierra nada: ahí sirve para que el mouse salga de la ventana de juego.
 
 ## 6. Cómo se juega
 
@@ -95,9 +98,13 @@ Si querés jugarlo sin abrir Unity:
 1. **File → Build Profiles** (en versiones anteriores de Unity es *Build Settings*).
 2. Verificá que la plataforma seleccionada sea **Windows**. Las cuatro escenas ya están configuradas en el orden correcto, no hay que agregarlas.
 3. Clic en **Build**, elegí una carpeta vacía y esperá.
-4. Al terminar, ejecutá el `.exe` que quedó en esa carpeta.
+4. Al terminar, ejecutá el `inkside.exe` que quedó en esa carpeta.
 
-En el ejecutable se sale con **Alt + F4**.
+El juego arranca **en pantalla completa**, sin bordes ni barra de título. Para cerrarlo, apretá **`Esc`**.
+
+Para pasárselo a alguien, comprimí **toda la carpeta** del build, no solo el `.exe`: al lado quedan la carpeta `inkside_Data`, `UnityPlayer.dll` y el resto de los archivos que el juego necesita para arrancar.
+
+> Generar el ejecutable **no** vuelve a armar las escenas: se empaquetan tal como están guardadas. Las posiciones que acomodaste a mano no se mueven.
 
 ---
 
