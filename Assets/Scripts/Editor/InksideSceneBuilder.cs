@@ -313,10 +313,10 @@ namespace Inkside.EditorTools
                 // bajaba por la curvatura y se caía al vacío. El relieve lo dan "lunitas" medio enterradas
                 // (el mismo modelo de luna, asteroide_superficie.glb) que asoman como cúpulas de cráter.
                 FlatGround = true,
-                PlayExtent = 34f,
+                PlayExtent = 80f,
                 GroundAlbedoPath = "Assets/_Mundos/02_Principito/Texturas/SueloLunar/suelo_lunar_albedo_4k.jpg",
                 GroundNormalPath = "Assets/_Mundos/02_Principito/Texturas/SueloLunar/suelo_lunar_normal_4k.exr",
-                GroundSize = 200f,
+                GroundSize = 300f,
                 GroundTileMeters = 6f,
                 GroundSmoothness = 0.1f,
                 SkyboxPath = "Assets/_Mundos/02_Principito/Texturas/skybox_espacio_estrellas_8k.jpg",
@@ -341,13 +341,29 @@ namespace Inkside.EditorTools
                     new PropSpec { Key = "crater5", Name = "Luna_Crater_5", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 2.5f, SinkFraction = 0.7f, Offset = new Vector3(-4f, 0f, -6f), Yaw = 280f },
                     new PropSpec { Key = "crater6", Name = "Luna_Crater_6", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 6f, SinkFraction = 0.7f, Offset = new Vector3(-10f, 0f, -11f), Yaw = 30f },
                     new PropSpec { Key = "crater7", Name = "Luna_Crater_7", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 3.5f, SinkFraction = 0.7f, Offset = new Vector3(4f, 0f, -12f), Yaw = 100f },
+                    new PropSpec { Key = "crater8", Name = "Luna_Crater_8", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 10f, SinkFraction = 0.7f, Offset = new Vector3(-18f, 0f, 20f), Yaw = 50f },
+                    new PropSpec { Key = "crater9", Name = "Luna_Crater_9", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 3f, SinkFraction = 0.7f, Offset = new Vector3(15f, 0f, 22f), Yaw = 120f },
+                    new PropSpec { Key = "crater10", Name = "Luna_Crater_10", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 5f, SinkFraction = 0.7f, Offset = new Vector3(-26f, 0f, 2f), Yaw = 200f },
+                    new PropSpec { Key = "crater11", Name = "Luna_Crater_11", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 8f, SinkFraction = 0.7f, Offset = new Vector3(28f, 0f, 6f), Yaw = 300f },
+                    new PropSpec { Key = "crater12", Name = "Luna_Crater_12", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 4.5f, SinkFraction = 0.7f, Offset = new Vector3(-14f, 0f, -26f), Yaw = 10f },
+                    new PropSpec { Key = "crater13", Name = "Luna_Crater_13", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 11f, SinkFraction = 0.7f, Offset = new Vector3(18f, 0f, -20f), Yaw = 80f },
+                    new PropSpec { Key = "crater14", Name = "Luna_Crater_14", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 3f, SinkFraction = 0.7f, Offset = new Vector3(-30f, 0f, -14f), Yaw = 160f },
+                    new PropSpec { Key = "crater15", Name = "Luna_Crater_15", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 6.5f, SinkFraction = 0.7f, Offset = new Vector3(2f, 0f, 30f), Yaw = 240f },
+                    new PropSpec { Key = "crater16", Name = "Luna_Crater_16", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 7f, SinkFraction = 0.7f, Offset = new Vector3(-32f, 0f, 30f), Yaw = 20f },
+                    new PropSpec { Key = "crater17", Name = "Luna_Crater_17", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 5f, SinkFraction = 0.7f, Offset = new Vector3(32f, 0f, -34f), Yaw = 90f },
+                    new PropSpec { Key = "crater18", Name = "Luna_Crater_18", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 2f, SinkFraction = 0.7f, Offset = new Vector3(-2f, 0f, -32f), Yaw = 330f },
+                    new PropSpec { Key = "crater19", Name = "Luna_Crater_19", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 1.8f, SinkFraction = 0.7f, Offset = new Vector3(12f, 0f, 12f), Yaw = 45f },
+                    new PropSpec { Key = "crater20", Name = "Luna_Crater_20", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 1.5f, SinkFraction = 0.7f, Offset = new Vector3(-20f, 0f, -4f), Yaw = 270f },
+                    // La que esconde la Rosa: lejos del spawn (~37 m) y alta (2,7 m asomando), para que haya que explorar.
+                    new PropSpec { Key = "crater_rosa", Name = "Luna_Crater_Lejano", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 9f, SinkFraction = 0.7f, Offset = new Vector3(22f, 0f, 30f), Yaw = 15f },
                 },
                 Items = new[]
                 {
                     new InteractableSpec { Name = "El_Zorro", DisplayName = "el Zorro", ModelPath = "Assets/_Mundos/02_Principito/Modelos/fox.glb", Kind = Kind.Npc, TargetSize = 0.7f, Offset = new Vector3(1f, 0f, 3.5f), Yaw = 180f, DialogueSpritePath = "Assets/_Mundos/02_Principito/Texturas/dialogo_zorro.jpg" },
-                    // Detrás de la cúpula grande (centro a 9 m, radio a ras del suelo ~3,2 m): no se ve desde el spawn,
-                    // hay que rodear el cráter para encontrarla. El builder avisa si queda a la vista.
-                    new InteractableSpec { Name = "Rosa", ModelPath = "Assets/_Mundos/02_Principito/Modelos/rose.glb", Kind = Kind.Target, TargetSize = 0.8f, RequireLineOfSight = false, Offset = new Vector3(-4f, 0f, 13.1f), GlowIntensity = 2.5f, GlowColor = new Color(1f, 0.88f, 0.9f), MatteMaterials = true, SfxPath = "Assets/_Mundos/02_Principito/Audio/SFX/glass_sparkle.mp3" },
+                    // Detrás de Luna_Crater_Lejano (centro a 37 m del spawn, radio a ras del suelo ~4,1 m), del lado
+                    // opuesto al spawn: no se ve de entrada y la cúpula grande cercana queda como señuelo.
+                    // El builder avisa si queda a la vista.
+                    new InteractableSpec { Name = "Rosa", ModelPath = "Assets/_Mundos/02_Principito/Modelos/rose.glb", Kind = Kind.Target, TargetSize = 0.8f, RequireLineOfSight = false, Offset = new Vector3(25f, 0f, 34.1f), GlowIntensity = 2.5f, GlowColor = new Color(1f, 0.88f, 0.9f), MatteMaterials = true, SfxPath = "Assets/_Mundos/02_Principito/Audio/SFX/glass_sparkle.mp3" },
                 },
                 AmbientPath = "Assets/_Mundos/02_Principito/Audio/Ambiente/space_ambient_pad.mp3",
                 LightColor = new Color(0.75f, 0.8f, 1f),
