@@ -40,6 +40,7 @@ namespace Inkside.EditorTools
 
         const string CursorTexPath = "Assets/_Comunes/UI/Texturas/target_cursor.png";
         const string PanelTexPath = "Assets/_Comunes/UI/Texturas/panel_dialogo.png";
+        const string InstructionsTexPath = "Assets/_Comunes/UI/Texturas/instrucciones.jpg";
 
         const string BookPageTurnSfx = "Assets/_Mundos/00_Biblioteca/Audio/SFX/book_page_turn.mp3";
 
@@ -171,7 +172,8 @@ namespace Inkside.EditorTools
                 // Escena temporal para armar prefabs y assets compartidos
                 EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
                 var playerPrefab = BuildPlayerPrefab();
-                var canvasPrefab = BuildCanvasPrefab(reticleSprite, panelSprite);
+                var instructionsSprite = EnsureSprite(InstructionsTexPath, true);
+                var canvasPrefab = BuildCanvasPrefab(reticleSprite, panelSprite, instructionsSprite);
                 var floorMat = EnsureMaterial(FloorMatPath, new Color(0.16f, 0.13f, 0.11f), Color.black);
                 var lightingSettings = EnsureLightingSettings();
 
@@ -642,7 +644,7 @@ namespace Inkside.EditorTools
         }
 
         // ================================================================== PREFAB DEL CANVAS
-        static GameObject BuildCanvasPrefab(Sprite reticleSprite, Sprite panelSprite)
+        static GameObject BuildCanvasPrefab(Sprite reticleSprite, Sprite panelSprite, Sprite instructionsSprite)
         {
             var canvasGO = new GameObject("Canvas_UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             var canvas = canvasGO.GetComponent<Canvas>();
@@ -702,6 +704,9 @@ namespace Inkside.EditorTools
             SetRef(panelUI, "dialogueImage", panelImg);
             panel.gameObject.SetActive(false);      // oculto por defecto
 
+            // --- Instrucciones (tecla Q): encima del diálogo y debajo del fundido
+            AddInstructionsUI(canvasGO.transform, instructionsSprite, font);
+
             // --- FadeImage (último hijo: se dibuja encima de todo)
             var fade = NewRect("FadeImage", canvasGO.transform);
             Stretch(fade);
@@ -729,6 +734,92 @@ namespace Inkside.EditorTools
             }
             else Log("Prefab creado: " + CanvasPrefabPath);
             return prefab;
+        }
+
+        /// <summary>
+        /// Agrega al Canvas el objeto "Instructions": el cartel "[Q] Instrucciones" (sólo se muestra en la
+        /// Biblioteca) y el panel con la imagen de instrucciones, manejados por <see cref="InstructionsUI"/>.
+        /// Lo usan BuildCanvasPrefab y AddInstructionsToCanvasPrefab.
+        /// </summary>
+        static GameObject AddInstructionsUI(Transform canvasRoot, Sprite instructionsSprite, TMP_FontAsset font)
+        {
+            var root = NewRect("Instructions", canvasRoot);
+            Stretch(root);
+            var ui = root.gameObject.AddComponent<InstructionsUI>();
+
+            // Cartel: mismo ancla, pivote y ancho que InteractionPrompt, para que InstructionsUI lo apile
+            // debajo restando la altura del otro. Un poco más chico y tenue: es secundario.
+            var hint = NewRect("InstructionsHint", root);
+            hint.anchorMin = hint.anchorMax = new Vector2(0.5f, 0.5f);
+            hint.pivot = new Vector2(0.5f, 1f);
+            hint.anchoredPosition = new Vector2(0f, -40f);
+            hint.sizeDelta = new Vector2(700f, 50f);
+            var hintTmp = hint.gameObject.AddComponent<TextMeshProUGUI>();
+            SetupText(hintTmp, font, "[Q] Instrucciones", 26f, TextAlignmentOptions.Center, new Color(1f, 1f, 1f, 0.85f));
+            hint.gameObject.SetActive(false); // lo prende InstructionsUI, sólo en la Biblioteca
+
+            // Panel: fondo oscuro a pantalla completa + la imagen centrada (16:9 con el texto dibujado adentro,
+            // así que preserveAspect, igual que las tarjetas de diálogo).
+            var panel = NewRect("InstructionsPanel", root);
+            Stretch(panel);
+            var backdrop = panel.gameObject.AddComponent<Image>();
+            backdrop.color = new Color(0f, 0f, 0f, 0.7f);
+            backdrop.raycastTarget = false;
+
+            var image = NewRect("InstructionsImage", panel);
+            image.anchorMin = new Vector2(0.06f, 0.06f);
+            image.anchorMax = new Vector2(0.94f, 0.94f);
+            image.offsetMin = image.offsetMax = Vector2.zero;
+            var img = image.gameObject.AddComponent<Image>();
+            img.sprite = instructionsSprite;
+            img.preserveAspect = true;
+            img.raycastTarget = false;
+            if (instructionsSprite == null) Pending.Add("Instrucciones: no se encontró " + InstructionsTexPath + ", el panel queda vacío.");
+            panel.gameObject.SetActive(false); // oculto por defecto
+
+            var prompt = canvasRoot.Find("InteractionPrompt") as RectTransform;
+            var promptText = prompt != null ? prompt.Find("PromptText") : null;
+            SetRef(ui, "panel", panel.gameObject);
+            SetRef(ui, "hint", hint);
+            SetRef(ui, "interactionPrompt", prompt);
+            SetRef(ui, "interactionPromptText", promptText != null ? promptText.gameObject : null);
+            return root.gameObject;
+        }
+
+        /// <summary>
+        /// Agrega las instrucciones al prefab Canvas_UI que YA existe, sin regenerarlo: los objetos que tiene
+        /// conservan sus IDs, así que las escenas (que lo usan como instancia) reciben lo nuevo sin reconstruirse
+        /// y no se rompe ninguna referencia. Si ya las tiene, no hace nada.
+        /// CLI: -executeMethod Inkside.EditorTools.InksideSceneBuilder.AddInstructionsToCanvasPrefab
+        /// </summary>
+        [MenuItem("Inkside/Agregar instrucciones al Canvas (sin rebuild)")]
+        public static void AddInstructionsToCanvasPrefab()
+        {
+            var sprite = EnsureSprite(InstructionsTexPath, true);
+            var contents = PrefabUtility.LoadPrefabContents(CanvasPrefabPath);
+            try
+            {
+                if (contents.transform.Find("Instructions") != null)
+                {
+                    Debug.Log("[InksideSceneBuilder] Canvas_UI ya tiene las instrucciones: no se cambia nada.");
+                    return;
+                }
+                TMP_FontAsset font = null;
+                var promptTmp = contents.GetComponentInChildren<TextMeshProUGUI>(true);
+                if (promptTmp != null) font = promptTmp.font;
+                var added = AddInstructionsUI(contents.transform, sprite, font);
+
+                // Debajo del fundido a negro, que tiene que seguir siendo el último hijo.
+                var fade = contents.transform.Find("FadeImage");
+                if (fade != null) added.transform.SetSiblingIndex(fade.GetSiblingIndex());
+
+                PrefabUtility.SaveAsPrefabAsset(contents, CanvasPrefabPath);
+                Debug.Log("[InksideSceneBuilder] Instrucciones agregadas a " + CanvasPrefabPath);
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(contents);
+            }
         }
 
         static RectTransform NewRect(string name, Transform parent)

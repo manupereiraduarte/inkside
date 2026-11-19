@@ -29,6 +29,8 @@ Sin cambios respecto al original: el usuario aparece en una sala de estilo victo
 
 Acción: apuntar a un libro + `[E]` → `book_page_turn.mp3` → fundido a negro → carga la escena del mundo.
 
+🔄 **Instrucciones:** en la Biblioteca aparece debajo de la mira el cartel `[Q] Instrucciones`; si también está el de interactuar (apuntando a un libro), se apila justo debajo de él. `Q` abre y cierra la imagen de instrucciones (`instrucciones.jpg`: controles y qué hacer) en cualquier mundo, aunque el cartel sólo se muestra en la Biblioteca. Mientras está abierta el jugador se puede mover pero no interactuar, y `Esc` la cierra en lugar de salir del juego.
+
 ### Acto 1: El Eco de la Tierra Media (*El Señor de los Anillos*) 🔄
 
 **Escenario:** interior de Bolsón Cerrado (`hobbit_house.glb`). El modelo conseguido **no incluye una chimenea** como mueble independiente, así que se ajusta la puesta en escena:
@@ -140,6 +142,7 @@ Reemplaza al catálogo "mínimo viable" del GDD original por el inventario real 
 |---|---|---|
 | Textura del cursor/retícula | `UI/Texturas/target_cursor.png` | ✅ |
 | Textura del panel de diálogo | `UI/Texturas/panel_dialogo.png` | ✅ |
+| Imagen de instrucciones (tecla Q) | `UI/Texturas/instrucciones.jpg` | ✅ 2752×1536, texto incluido |
 | SFX de click de interfaz | `Audio/UI/ui_interact_click.mp3` | ✅ |
 | Prefab del jugador (variante propia) | `Jugador/` | ❌ pendiente — se resuelve en el one-shot |
 | Prefab de Canvas de UI | `UI/Prefabs/` | ❌ pendiente — se resuelve en el one-shot |
@@ -225,6 +228,16 @@ DialoguePanelUI : MonoBehaviour      — UI común
   [SerializeField] Image dialogueImage          // una sola Image con preserveAspect, sin TMP_Text
   public void Show(Sprite sprite)
   public void Hide()
+
+InstructionsUI : MonoBehaviour       — objeto "Instructions" del Canvas (siempre activo)
+  [SerializeField] GameObject panel             // fondo oscuro + instrucciones.jpg, arranca desactivado
+  [SerializeField] RectTransform hint           // "[Q] Instrucciones", sólo en la Biblioteca
+  [SerializeField] RectTransform interactionPrompt / GameObject interactionPromptText  // para apilarse debajo
+  public static bool IsOpen                     // lo consultan RaycastInteractor (no interactuar) y QuitHandler
+  public static int EscConsumedFrame            // el Esc que cerró las instrucciones no cierra el juego
+
+ReturnToLibrary : MonoBehaviour      — se instala solo (RuntimeInitializeOnLoadMethod), no va en escenas
+  // Z en LotR / Principito / Harry Potter → ScreenFader.FadeOutThenLoad("00_Biblioteca"). Sin sonido ni cartel.
 ```
 
 🔄 **Decisión sobre el formato del diálogo:** el diálogo de cada NPC no se compone en runtime con texto, sino que es **una imagen por personaje** que ya trae el nombre y el texto dibujados adentro (`dialogo_gandalf.jpg`, `dialogo_zorro.jpg`, `dialogo_dumbledore.jpg`, 2752×1536, ~16:9). El panel es una única `Image` con `preserveAspect = true`, centrada y ocupando alrededor del 60% del ancho de pantalla. Se eligió así porque la versión anterior (banda negra translúcida con dos `TMP_Text`) se veía mal, y porque estas imágenes traen su propia ambientación (la de Gandalf incluye el fondo de velas alrededor del pergamino). Las tres se importan con compresión alta (`CompressedHQ`, máx. 2048) para que el texto chico no se ensucie. `panel_dialogo.png` queda sin usar, pero no se borra.
@@ -265,9 +278,9 @@ En todos los casos: agregar colliders invisibles en los límites del cubo para q
 
 No hace falta persistencia entre sesiones: es un loop simple (Biblioteca → Mundo → Biblioteca) que se reinicia cada vez que se abre el juego. No se implementa `PlayerPrefs` ni ningún sistema de save.
 
-### 4.9 Salida sin completar la misión
+### 4.9 Salida sin completar la misión 🔄
 
-No hay una "puerta trasera" para volver a la Biblioteca sin agarrar el objeto objetivo — dado el tamaño reducido de cada diorama, no hace falta; encontrar el objetivo siempre es rápido. Aceptado como simplificación de alcance.
+Con el campo lunar agrandado (la Rosa a ~42 m, detrás de un cráter) encontrar el objetivo ya no siempre es rápido, así que se agregó la tecla **`Z`: vuelve a la Biblioteca** desde cualquier mundo, con el mismo fundido a negro, sin sonido y sin cartel (figura en la imagen de instrucciones). En la Biblioteca no hace nada. Es código puro (`ReturnToLibrary`, se instala solo como `QuitHandler`), así que no depende de las escenas.
 
 ## 5. Hoja de Ruta 🔄 (reorganizada en 2 fases pensando en construcción asistida por IA)
 
