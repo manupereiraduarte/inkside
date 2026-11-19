@@ -69,7 +69,9 @@ Para salir del modo de juego, apretá **▶ Play** otra vez.
 | Correr | Mantener `Shift` |
 | Saltar | `Espacio` |
 | **Interactuar** | **`E`** |
-| Salir del juego | `Esc` (solo en el `.exe`) |
+| Ver las instrucciones | `Q` (abrir y cerrar) |
+| Volver a la biblioteca | `Z` (desde cualquier mundo) |
+| Salir del juego | `Esc` (solo en el `.exe`; si las instrucciones están abiertas, solo las cierra) |
 
 También funciona un joystick para caminar, mirar, correr y saltar. **Interactuar es solo con la tecla `E`.**
 
@@ -126,7 +128,7 @@ Para pasárselo a alguien, comprimí **toda la carpeta** del build, no solo el `
 
 ## Para desarrollar
 
-El proyecto se construyó por código. En el menú **Inkside** del Editor hay cuatro herramientas:
+El proyecto se construyó por código. En el menú **Inkside** del Editor hay cinco herramientas:
 
 | Herramienta | Para qué |
 |---|---|
@@ -134,5 +136,6 @@ El proyecto se construyó por código. En el menú **Inkside** del Editor hay cu
 | `Guardar layout de la escena abierta` | Persiste el acomodado manual para que un rebuild no lo borre |
 | `Ajustar tamaño del jugador (escena abierta)` | Aplica el tamaño de jugador que le corresponde a cada mundo |
 | `Reajustar colliders de los interactuables (escena abierta)` | Recalcula los colliders sobre la geometría actual |
+| `Agregar instrucciones al Canvas (sin rebuild)` | Suma el panel de instrucciones (tecla Q) al prefab del Canvas sin tocar las escenas |
 
-> Si vas a correr `Build All Scenes`, guardá antes el layout de las escenas que hayas acomodado a mano. El detalle de cómo encaja cada pieza está en el GDD.
+> Si vas a correr `Build All Scenes`, guardá antes el layout de las escenas que hayas acomodado a mano. Aun así, **la Biblioteca y Harry Potter tienen ajustes que el layout no guarda**: para reconstruir sólo algunas escenas usá la línea de comandos con `-executeMethod Inkside.EditorTools.InksideSceneBuilder.BuildScenesFromArgs -inksideScenes 01_LotR,02_Principito`. El detalle de cómo encaja cada pieza está en el GDD.

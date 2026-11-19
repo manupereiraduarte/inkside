@@ -65,6 +65,13 @@ public class RaycastInteractor : MonoBehaviour
             return;
         }
 
+        // Con las instrucciones abiertas no se interactúa: E abriría un libro por debajo de la imagen.
+        if (InstructionsUI.IsOpen)
+        {
+            if (promptUI != null) promptUI.Hide();
+            return;
+        }
+
         IInteractable target = FindInteractable();
 
         if (target == null)

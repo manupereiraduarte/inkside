@@ -79,12 +79,18 @@ namespace Inkside.EditorTools
         /// Aplica la regla de tamaño de esta escena al Player que haya en ella. Devuelve una línea de informe.
         /// Se respeta dónde está parado el jugador: la posición de mundo de la cápsula no se mueve.
         /// </summary>
-        public static string Apply(Scene scene)
+        public static string Apply(Scene scene) => Apply(scene, scene.name);
+
+        /// <summary>
+        /// Igual que <see cref="Apply(Scene)"/>, pero con el nombre de la regla explícito: una escena recién creada
+        /// por el builder todavía no está guardada y su scene.name viene vacío.
+        /// </summary>
+        public static string Apply(Scene scene, string sceneName)
         {
             SizeRule rule = null;
             foreach (var r in Rules)
-                if (r.Scene == scene.name) { rule = r; break; }
-            if (rule == null) return string.Format("'{0}' no tiene regla de tamaño de jugador.", scene.name);
+                if (r.Scene == sceneName) { rule = r; break; }
+            if (rule == null) return string.Format("'{0}' no tiene regla de tamaño de jugador.", sceneName);
 
             GameObject player = null;
             var byName = new Dictionary<string, Transform>();
@@ -94,22 +100,22 @@ namespace Inkside.EditorTools
                 foreach (var t in root.GetComponentsInChildren<Transform>(true))
                     if (!byName.ContainsKey(t.name)) byName[t.name] = t;
             }
-            if (player == null) return string.Format("(!) '{0}' no tiene un objeto 'Player'.", scene.name);
+            if (player == null) return string.Format("(!) '{0}' no tiene un objeto 'Player'.", sceneName);
 
             Transform reference;
             if (!byName.TryGetValue(rule.ReferenceObject, out reference))
                 return string.Format("(!) '{0}': no se encontró el objeto de referencia '{1}'.",
-                    scene.name, rule.ReferenceObject);
+                    sceneName, rule.ReferenceObject);
 
             float refHeight;
             if (!TryMeasureHeight(reference.gameObject, out refHeight))
                 return string.Format("(!) '{0}': '{1}' no tiene renderers visibles, no se puede medir.",
-                    scene.name, rule.ReferenceObject);
+                    sceneName, rule.ReferenceObject);
 
             float height = rule.FixedHeight > 0f ? rule.FixedHeight : refHeight * rule.Factor + rule.Offset;
             if (height < 0.3f)
                 return string.Format("(!) '{0}': la regla da una altura de {1:0.##} m, demasiado baja. Se cancela.",
-                    scene.name, height);
+                    sceneName, height);
 
             // PhysX exige height >= 2*radius; si no, la cápsula degenera en esfera.
             float radius = Mathf.Min(rule.Radius, height / 2f - 0.02f);
@@ -117,7 +123,7 @@ namespace Inkside.EditorTools
             float centerY = height / 2f;   // base de la cápsula justo en el origen del transform
 
             var capsule = FindChild(player.transform, "PlayerCapsule");
-            if (capsule == null) return string.Format("(!) '{0}': el Player no tiene 'PlayerCapsule'.", scene.name);
+            if (capsule == null) return string.Format("(!) '{0}': el Player no tiene 'PlayerCapsule'.", sceneName);
 
             // Dónde está realmente parado el jugador hoy, con los overrides manuales incluidos.
             Vector3 standing = capsule.position;
@@ -140,7 +146,7 @@ namespace Inkside.EditorTools
 
             // 4. La cápsula de colisión.
             var cc = capsule.GetComponent<CharacterController>();
-            if (cc == null) return string.Format("(!) '{0}': PlayerCapsule sin CharacterController.", scene.name);
+            if (cc == null) return string.Format("(!) '{0}': PlayerCapsule sin CharacterController.", sceneName);
             cc.height = height;
             cc.radius = radius;
             cc.center = new Vector3(0f, centerY, 0f);
@@ -181,7 +187,7 @@ namespace Inkside.EditorTools
                 "{4}.\n" +
                 "Camina a {5:0.##} m/s (corre a {6:0.##}), trepa hasta {7:0.##} m.\n" +
                 "'{8}' mide {9:0.##} m. Pies en {10}.",
-                scene.name, height, radius, eye, rule.Why,
+                sceneName, height, radius, eye, rule.Why,
                 4f * speedFactor, 6f * speedFactor, cc.stepOffset,
                 rule.ReferenceObject, refHeight, Fmt(capsule.position));
         }
