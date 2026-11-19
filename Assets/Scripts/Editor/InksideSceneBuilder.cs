@@ -1055,16 +1055,20 @@ namespace Inkside.EditorTools
             lightRoot.transform.SetSiblingIndex(3);
             canvasInstance.transform.SetSiblingIndex(4);
 
-            // 6.b Tamano del jugador segun la regla de esta escena (se mide un personaje del mundo, asi que
-            //     tiene que ir despues de crear los interactuables).
-            // La escena todavía no está guardada, así que scene.name viene vacío: se pasa el nombre del spec.
-            // Sin esto la regla no se aplicaba y el jugador quedaba con el tamaño genérico del prefab.
-            Report.AppendLine("  " + InksidePlayerSizer.Apply(scene, spec.Name));
-
-            // 6.c Reaplicar el acomodado manual (Fase B). Va al final a proposito: lo que se ajusto a mano
+            // 6.b Reaplicar el acomodado manual (Fase B). Va al final a proposito: lo que se ajusto a mano
             //     gana sobre lo que calculo la fisica, que es justamente el punto de guardarlo.
             Report.AppendLine("  " + InksideLayout.TryApply(spec.Name, scene));
             Physics.SyncTransforms();
+
+            // 6.c Tamano del jugador segun la regla de esta escena. Va DESPUES del layout: se mide un personaje
+            //     del mundo y su escala puede venir del layout (el zorro de El Principito está agrandado a mano;
+            //     medido antes, el jugador salía de 2 m en vez de 3). El sizer respeta dónde está parado el jugador.
+            // La escena todavía no está guardada, así que scene.name viene vacío: se pasa el nombre del spec.
+            Report.AppendLine("  " + InksidePlayerSizer.Apply(scene, spec.Name));
+            Physics.SyncTransforms();
+            // Las escenas acomodadas a mano tienen la cámara a 500 m (el prefab de Starter Assets trae 5000, que
+            // para estos dioramas sólo le quita precisión al depth buffer).
+            foreach (var cam in playerInstance.GetComponentsInChildren<Camera>(true)) cam.farClipPlane = 500f;
 
             // 6.d Los colliders se dimensionaron antes de reaplicar el layout, asi que si ahi se movio un hijo
             //     de un modelo quedaron desfasados de la geometria. Se recalculan al final sobre lo que hay.
