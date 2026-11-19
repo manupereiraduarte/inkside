@@ -31,7 +31,6 @@ namespace Inkside.EditorTools
         const string PlayerPrefabPath = "Assets/_Comunes/Jugador/PlayerInkside.prefab";
         const string CanvasPrefabPath = "Assets/_Comunes/UI/Prefabs/Canvas_UI.prefab";
         const string FloorMatPath = "Assets/_Comunes/Materiales/M_PisoFallback.mat";
-        const string SpaceMatPath = "Assets/_Mundos/02_Principito/Materiales/M_FondoEspacio.mat";
         const string LightingSettingsPath = "Assets/_Escenas/LightingSettings_Inkside.lighting";
 
         const string MainCameraPrefab = "Assets/Starter Assets/Runtime/FirstPersonController/Prefabs/MainCamera.prefab";
@@ -58,6 +57,11 @@ namespace Inkside.EditorTools
             public Vector3 RotationOffset; // corrección de orientación propia del modelo (pitch/roll que el yaw no cubre)
             public Vector3 Offset;        // relativo al ancla (centro XZ del room, piso en Y)
             public float Yaw;
+            public string Name;           // nombre del objeto en la escena; vacío = nombre del .glb
+            public float SinkFraction;    // fracción de su altura que queda enterrada bajo el piso (cráteres)
+            public float LampIntensity;   // > 0: point light en la parte alta del modelo (farol)
+            public Color LampColor = new Color(1f, 0.8f, 0.5f);
+            public float LampRange = 10f;
         }
 
         class InteractableSpec
@@ -78,6 +82,9 @@ namespace Inkside.EditorTools
             public string SfxPath;
             public string DialogueSpritePath; // tarjeta de diálogo del NPC (imagen con nombre y texto adentro)
             public string LoopSfxPath;    // AudioSource 3D en loop sobre el propio objeto
+            public float GlowIntensity;   // > 0: luz puntual propia encima del objeto (la Rosa queda a la sombra del cráter)
+            public Color GlowColor = Color.white;
+            public bool MatteMaterials;   // copia los materiales metálicos sin metálico (ver MatteMaterials)
         }
 
         class SceneSpec
@@ -87,11 +94,27 @@ namespace Inkside.EditorTools
             public PropSpec[] Props;
             public InteractableSpec[] Items;
             public string AmbientPath;
-            public bool SpaceRoombox;      // 02_Principito: fondo estelar + terreno esférico
-            public string TerrainModelPath; // esfera usada como suelo curvo (El Principito: el asteroide B-612)
-            public float TerrainDiameter;   // diámetro del asteroide en metros
-            public float PlayExtent;        // lado de la zona jugable sobre la cima del asteroide
-            public float StarBoxSize;       // lado del cubo de estrellas que rodea todo
+            // Suelo plano propio (El Principito): un único plano texturado que es a la vez el piso jugable y el
+            // suelo que se ve hasta el horizonte. Las paredes invisibles encierran PlayExtent x PlayExtent.
+            public bool FlatGround;
+            public float PlayExtent;
+            // Suelo visual grande (en LotR reemplaza al Fallback_Floor; en El Principito es el suelo plano).
+            public string GroundAlbedoPath;
+            public string GroundNormalPath;
+            public float GroundSize;        // lado del plano en metros
+            public float GroundTileMeters;  // cuántos metros cubre una repetición de la textura
+            public float GroundSmoothness = 0.15f;
+            // > 0: las paredes siguen el borde real del terreno del room (sondeo radial), metidas esta distancia.
+            public float FittedWallInset;
+            // Cielo panorámico (equirectangular) y niebla lineal para fundir el suelo lejano con el horizonte.
+            public string SkyboxPath;
+            public float SkyboxExposure = 1f;
+            public float SkyboxSunU = -1f;  // >= 0: coordenada U del sol en la imagen; se gira el cielo para alinearlo con la luz
+            public Color FogColor;
+            public float FogStart, FogEnd;  // FogEnd 0 = sin niebla
+            public Vector3 SunEuler = new Vector3(50f, -30f, 0f);
+            public float SunIntensity = 1.1f;
+            public float FocoIntensity = -1f; // < 0: la point light central escala con el tamaño de la sala
             public Color LightColor;
             public Color AmbientColor;
             public Color Tint;
@@ -106,7 +129,26 @@ namespace Inkside.EditorTools
 
         // ================================================================== ENTRY POINT
         [MenuItem("Inkside/Build All Scenes")]
-        public static void BuildAllScenes()
+        public static void BuildAllScenes() => BuildScenes(null);
+
+        /// <summary>
+        /// CLI para reconstruir SÓLO algunas escenas y no pisar las que ya están acomodadas a mano:
+        ///   Unity.exe -batchmode -quit -projectPath "<repo>" -executeMethod Inkside.EditorTools.InksideSceneBuilder.BuildScenesFromArgs -inksideScenes 01_LotR,02_Principito -logFile build_log.txt
+        /// </summary>
+        public static void BuildScenesFromArgs()
+        {
+            var args = Environment.GetCommandLineArgs();
+            int i = Array.IndexOf(args, "-inksideScenes");
+            if (i < 0 || i + 1 >= args.Length)
+            {
+                Debug.LogError("[InksideSceneBuilder] Falta -inksideScenes <escena,escena>. No se reconstruye nada.");
+                if (Application.isBatchMode) EditorApplication.Exit(1);
+                return;
+            }
+            BuildScenes(new HashSet<string>(args[i + 1].Split(',').Select(n => n.Trim()).Where(n => n.Length > 0)));
+        }
+
+        static void BuildScenes(HashSet<string> only)
         {
             Report.Clear();
             Pending.Clear();
@@ -131,15 +173,15 @@ namespace Inkside.EditorTools
                 var playerPrefab = BuildPlayerPrefab();
                 var canvasPrefab = BuildCanvasPrefab(reticleSprite, panelSprite);
                 var floorMat = EnsureMaterial(FloorMatPath, new Color(0.16f, 0.13f, 0.11f), Color.black);
-                var spaceMat = EnsureMaterial(SpaceMatPath, new Color(0.01f, 0.012f, 0.03f), new Color(0.02f, 0.03f, 0.09f));
                 var lightingSettings = EnsureLightingSettings();
 
-                // Paso 1..N: las 4 escenas
+                // Paso 1..N: las escenas pedidas (todas si no se filtra)
                 foreach (var spec in GetSceneSpecs())
                 {
+                    if (only != null && !only.Contains(spec.Name)) continue;
                     try
                     {
-                        BuildScene(spec, playerPrefab, canvasPrefab, floorMat, spaceMat, lightingSettings);
+                        BuildScene(spec, playerPrefab, canvasPrefab, floorMat, lightingSettings);
                     }
                     catch (Exception e)
                     {
@@ -154,6 +196,10 @@ namespace Inkside.EditorTools
                 if (_errors > 0)
                 {
                     Log($"Build Settings NO se actualiza: hubo {_errors} error(es).");
+                }
+                else if (only != null)
+                {
+                    Log("Build Settings sin tocar (se reconstruyeron sólo: " + string.Join(", ", only) + ").");
                 }
                 else
                 {
@@ -237,6 +283,21 @@ namespace Inkside.EditorTools
                     new InteractableSpec { Name = "Anillo_Unico", ModelPath = "Assets/_Mundos/01_LotR/Modelos/one_ring.glb", Kind = Kind.Target, TargetSize = 0.06f, Grounded = false, Offset = new Vector3(-1.8f, 1.2f, 2.2f), SfxPath = "Assets/_Mundos/01_LotR/Audio/SFX/ring_whisper.mp3" },
                 },
                 AmbientPath = "Assets/_Mundos/01_LotR/Audio/Ambiente/countryside_birds_ambient.mp3",
+                // El terreno del modelo es redondeado (termina a 9,5-14 m del centro según la dirección): las paredes
+                // lo siguen por sondeo radial, un metro hacia adentro, para que no se pueda bajar por el borde.
+                FittedWallInset = 1f,
+                // Campo verde hasta el horizonte: HDRI de colinas + un plano de pasto grande que la niebla funde con él.
+                SkyboxPath = "Assets/_Mundos/01_LotR/Texturas/skybox_comarca_campo_4k.hdr",
+                SkyboxExposure = 1f,
+                SkyboxSunU = 0.5999f, // sol del HDRI en el píxel 2457 de 4096, a 11° sobre el horizonte
+                SunEuler = new Vector3(30f, -30f, 0f), // sol de tarde, más bajo que el resto de los mundos, como en el HDRI
+                GroundAlbedoPath = "Assets/_Mundos/01_LotR/Texturas/pasto_lejano_tile.png",
+                GroundSize = 400f,
+                GroundTileMeters = 4f,
+                GroundSmoothness = 0.05f,
+                FogColor = new Color(0.40f, 0.45f, 0.34f), // verde grisáceo del HDRI justo debajo del horizonte
+                FogStart = 35f,
+                FogEnd = 200f,
                 LightColor = new Color(1f, 0.92f, 0.78f),
                 AmbientColor = new Color(0.35f, 0.32f, 0.25f),
                 Tint = new Color(1f, 0.96f, 0.88f),
@@ -248,26 +309,45 @@ namespace Inkside.EditorTools
             {
                 Name = "02_Principito",
                 WorldFolder = "02_Principito",
-                SpaceRoombox = true,
-                // El asteroide es el SUELO del diorama, no un adorno (GDD acto 2). Con 44 m de diámetro la cima
-                // es una superficie caminable y su curvatura esconde el otro lado: la rosa deja de verse de entrada.
-                TerrainModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb",
-                TerrainDiameter = 44f,
-                PlayExtent = 32f,
-                StarBoxSize = 120f,
+                // Suelo lunar plano y cerrado por paredes invisibles: con el asteroide esférico de antes el jugador
+                // bajaba por la curvatura y se caía al vacío. El relieve lo dan "lunitas" medio enterradas
+                // (el mismo modelo de luna, asteroide_superficie.glb) que asoman como cúpulas de cráter.
+                FlatGround = true,
+                PlayExtent = 34f,
+                GroundAlbedoPath = "Assets/_Mundos/02_Principito/Texturas/SueloLunar/suelo_lunar_albedo_4k.jpg",
+                GroundNormalPath = "Assets/_Mundos/02_Principito/Texturas/SueloLunar/suelo_lunar_normal_4k.exr",
+                GroundSize = 200f,
+                GroundTileMeters = 6f,
+                GroundSmoothness = 0.1f,
+                SkyboxPath = "Assets/_Mundos/02_Principito/Texturas/skybox_espacio_estrellas_8k.jpg",
+                SkyboxExposure = 1.6f, // la imagen es muy oscura: se levanta para que se lean las estrellas
+                // El suelo se funde a negro hacia el borde, así no se ve dónde termina el plano contra las estrellas.
+                FogColor = new Color(0.01f, 0.012f, 0.03f),
+                FogStart = 30f,
+                FogEnd = 95f,
+                SunIntensity = 0.6f,
+                FocoIntensity = 1.5f, // tenue: la luz cálida del diorama es la del farol
                 Props = new[]
                 {
-                    new PropSpec { Key = "lamp", ModelPath = "Assets/_Mundos/02_Principito/Modelos/farol_calle.glb", TargetSize = 3.5f, Offset = new Vector3(3.5f, 0f, 3f) },
-                    // Rocas sueltas: el mismo modelo del asteroide a escala chica, para que la superficie tenga relieve.
-                    new PropSpec { Key = "roca1", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 1.6f, Offset = new Vector3(-4f, -0.5f, 5.5f) },
-                    new PropSpec { Key = "roca2", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 1f, Offset = new Vector3(5.5f, -0.3f, -3f) },
-                    new PropSpec { Key = "roca3", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 2.2f, Offset = new Vector3(-6f, -0.6f, -5f) },
+                    // El farol es la luz cálida del diorama, contra el frío de la luz de las estrellas.
+                    new PropSpec { Key = "lamp", ModelPath = "Assets/_Mundos/02_Principito/Modelos/farol_calle.glb", TargetSize = 3.5f, Offset = new Vector3(3.5f, 0f, 3f), LampIntensity = 4f, LampRange = 9f },
+                    // Cúpulas de cráter. SinkFraction 0.7 de la altura deja el centro 0,4 radios bajo el piso: el borde contra el
+                    // suelo tiene ~66° de pendiente (más que el slopeLimit del jugador), así que no se pueden subir.
+                    // La grande es la que esconde la rosa desde el spawn.
+                    new PropSpec { Key = "crater_grande", Name = "Luna_Crater_Grande", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 7f, SinkFraction = 0.7f, Offset = new Vector3(-4f, 0f, 9f) },
+                    new PropSpec { Key = "crater2", Name = "Luna_Crater_2", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 4f, SinkFraction = 0.7f, Offset = new Vector3(6.5f, 0f, 9f), Yaw = 70f },
+                    new PropSpec { Key = "crater3", Name = "Luna_Crater_3", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 3f, SinkFraction = 0.7f, Offset = new Vector3(-8f, 0f, 1.5f), Yaw = 140f },
+                    new PropSpec { Key = "crater4", Name = "Luna_Crater_4", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 5.5f, SinkFraction = 0.7f, Offset = new Vector3(9f, 0f, -5f), Yaw = 210f },
+                    new PropSpec { Key = "crater5", Name = "Luna_Crater_5", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 2.5f, SinkFraction = 0.7f, Offset = new Vector3(-4f, 0f, -6f), Yaw = 280f },
+                    new PropSpec { Key = "crater6", Name = "Luna_Crater_6", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 6f, SinkFraction = 0.7f, Offset = new Vector3(-10f, 0f, -11f), Yaw = 30f },
+                    new PropSpec { Key = "crater7", Name = "Luna_Crater_7", ModelPath = "Assets/_Mundos/02_Principito/Modelos/asteroide_superficie.glb", TargetSize = 3.5f, SinkFraction = 0.7f, Offset = new Vector3(4f, 0f, -12f), Yaw = 100f },
                 },
                 Items = new[]
                 {
                     new InteractableSpec { Name = "El_Zorro", DisplayName = "el Zorro", ModelPath = "Assets/_Mundos/02_Principito/Modelos/fox.glb", Kind = Kind.Npc, TargetSize = 0.7f, Offset = new Vector3(1f, 0f, 3.5f), Yaw = 180f, DialogueSpritePath = "Assets/_Mundos/02_Principito/Texturas/dialogo_zorro.jpg" },
-                    // Del otro lado de la cima: hay que caminar y rodear el asteroide para encontrarla.
-                    new InteractableSpec { Name = "Rosa", ModelPath = "Assets/_Mundos/02_Principito/Modelos/rose.glb", Kind = Kind.Target, TargetSize = 0.8f, RequireLineOfSight = false, Offset = new Vector3(-2f, 0f, -14f), SfxPath = "Assets/_Mundos/02_Principito/Audio/SFX/glass_sparkle.mp3" },
+                    // Detrás de la cúpula grande (centro a 9 m, radio a ras del suelo ~3,2 m): no se ve desde el spawn,
+                    // hay que rodear el cráter para encontrarla. El builder avisa si queda a la vista.
+                    new InteractableSpec { Name = "Rosa", ModelPath = "Assets/_Mundos/02_Principito/Modelos/rose.glb", Kind = Kind.Target, TargetSize = 0.8f, RequireLineOfSight = false, Offset = new Vector3(-4f, 0f, 13.1f), GlowIntensity = 2.5f, GlowColor = new Color(1f, 0.88f, 0.9f), MatteMaterials = true, SfxPath = "Assets/_Mundos/02_Principito/Audio/SFX/glass_sparkle.mp3" },
                 },
                 AmbientPath = "Assets/_Mundos/02_Principito/Audio/Ambiente/space_ambient_pad.mp3",
                 LightColor = new Color(0.75f, 0.8f, 1f),
@@ -661,7 +741,7 @@ namespace Inkside.EditorTools
         }
 
         // ================================================================== ESCENAS
-        static void BuildScene(SceneSpec spec, GameObject playerPrefab, GameObject canvasPrefab, Material floorMat, Material spaceMat, LightingSettings lightingSettings)
+        static void BuildScene(SceneSpec spec, GameObject playerPrefab, GameObject canvasPrefab, Material floorMat, LightingSettings lightingSettings)
         {
             Report.AppendLine();
             Report.AppendLine($"[{spec.Name}]");
@@ -675,6 +755,7 @@ namespace Inkside.EditorTools
 
             // 2. Environment: rooms primero (definen piso y centro)
             var placedProps = new Dictionary<string, GameObject>();
+            var rooms = new List<GameObject>();
             bool hasRoom = false;
             Bounds roomBounds = new Bounds(Vector3.zero, Vector3.zero);
 
@@ -693,37 +774,22 @@ namespace Inkside.EditorTools
                 }
                 else Report.AppendLine($"  Environment {go.name}: sin Renderers (!)");
                 placedProps[prop.Key] = go;
+                rooms.Add(go);
             }
 
-            // Terreno esférico: el asteroide no es un adorno, es el suelo del diorama (GDD acto 2).
-            // Se lo coloca con su cima en y=0, así el jugador camina sobre una superficie curva y el horizonte
-            // esconde lo que está del otro lado.
-            if (!string.IsNullOrEmpty(spec.TerrainModelPath))
-            {
-                var terrain = InstantiateModel(spec.TerrainModelPath, envRoot.transform);
-                if (terrain != null)
-                {
-                    terrain.name = "Asteroide_Terreno";
-                    FitSize(terrain, spec.TerrainDiameter);
-                    if (TryGetBounds(terrain, out var tb))
-                        terrain.transform.position += new Vector3(-tb.center.x, -tb.max.y, -tb.center.z);
-                    int tc = AddMeshColliders(terrain);
-                    TryGetBounds(terrain, out var tb2);
-                    Report.AppendLine($"  Terreno {terrain.name}: diámetro {F(tb2.size)} cima en y={tb2.max.y:0.00} — {tc} MeshCollider(s)");
-                }
-            }
-
-            // Ancla: centro XZ del room y su piso (bounds.min.y). Principito: cima del asteroide en y=0.
+            // Ancla: centro XZ del room y su piso (bounds.min.y). Suelo plano: el origen, con el piso en y=0.
             float floorY;
             Vector3 anchor;
             Vector3 envSize;
-            if (spec.SpaceRoombox)
+            if (spec.FlatGround)
             {
                 envSize = new Vector3(spec.PlayExtent, 12f, spec.PlayExtent);
                 floorY = 0f;
                 anchor = Vector3.zero;
-                BuildStarBox(envRoot.transform, spec.StarBoxSize, spaceMat);
-                Report.AppendLine($"  Fondo estelar de {spec.StarBoxSize:0} m con material {spaceMat.name}, zona jugable {spec.PlayExtent:0} m");
+                // Acá el plano ES el piso, así que tiene que existir antes de buscar el spawn.
+                BuildGround(spec, envRoot.transform, "Suelo_Lunar", new Vector3(0f, floorY, 0f));
+                Physics.SyncTransforms();
+                Report.AppendLine($"  Suelo plano de {spec.GroundSize:0} m, zona jugable {spec.PlayExtent:0} m");
             }
             else if (hasRoom)
             {
@@ -764,30 +830,45 @@ namespace Inkside.EditorTools
             Physics.SyncTransforms();
             Report.AppendLine($"  Player spawn={F(spawnRoot)} piso={groundY:0.##} mirando yaw={facingYaw:0}° (búsqueda por física)");
 
-            // En el asteroide no hace falta piso de respaldo (el suelo es la esfera), pero sí un límite lateral
-            // para que el jugador no baje por la curvatura hasta la pendiente imposible y se caiga al vacío.
-            if (spec.SpaceRoombox)
+            // Suelo plano: el piso ya existe, sólo faltan las paredes. Altas (20 m) para que no se puedan saltar.
+            if (spec.FlatGround)
             {
                 BuildBoundaryWalls(envRoot.transform, new Vector3(anchor.x, groundY - 2f, anchor.z), spec.PlayExtent, 20f);
                 Physics.SyncTransforms();
             }
 
-            // Piso de respaldo (material plano) + paredes invisibles: red de seguridad para que el jugador no
-            // caiga al vacío ni salga del diorama si el modelo no trae piso o paredes con collider.
-            if (!spec.SpaceRoombox)
+            // Piso de respaldo + paredes invisibles: red de seguridad para que el jugador no caiga al vacío ni
+            // salga del diorama si el modelo no trae piso o paredes con collider.
+            if (!spec.FlatGround)
             {
                 // Ceñido al modelo real: un mínimo fijo dejaba un plano de 20 m y paredes a 10 m del centro
                 // en una sala de 4,5 m, o sea muy por fuera del diorama.
                 float extent = Mathf.Max(envSize.x, envSize.z) * 1.05f + 0.5f;
                 float fallbackY = Mathf.Min(floorY, groundY) - 0.01f;
-                var floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
-                floor.name = "Fallback_Floor"; // TODO ajustar en Fase B: quitar si el modelo ya trae piso con collider
-                floor.transform.SetParent(envRoot.transform, false);
-                floor.transform.position = new Vector3(anchor.x, fallbackY, anchor.z);
-                floor.transform.localScale = new Vector3(extent / 10f, 1f, extent / 10f);
-                floor.GetComponent<MeshRenderer>().sharedMaterial = floorMat;
-                BuildBoundaryWalls(envRoot.transform, new Vector3(anchor.x, fallbackY, anchor.z), extent, Mathf.Max(envSize.y, 4f) + 4f);
-                Pending.Add($"{spec.Name}: revisar Fallback_Floor / Bounds_Walls (placeholder) contra el piso y las paredes reales del modelo.");
+                float wallHeight = Mathf.Max(envSize.y, 4f) + 4f;
+                var wallBase = new Vector3(anchor.x, fallbackY, anchor.z);
+
+                // Las paredes van ANTES que el piso: el sondeo radial tiene que ver sólo el terreno del modelo.
+                if (spec.FittedWallInset > 0f && rooms.Count > 0)
+                    Report.AppendLine("  " + BuildFittedWalls(envRoot.transform, rooms, wallBase, wallHeight, spec.FittedWallInset));
+                else
+                    BuildBoundaryWalls(envRoot.transform, wallBase, extent, wallHeight);
+
+                if (!string.IsNullOrEmpty(spec.GroundAlbedoPath))
+                {
+                    // Suelo visual hasta el horizonte (a la misma altura que el piso de respaldo, que reemplaza).
+                    BuildGround(spec, envRoot.transform, "Suelo_Lejano", new Vector3(anchor.x, fallbackY, anchor.z));
+                }
+                else
+                {
+                    var floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
+                    floor.name = "Fallback_Floor"; // TODO ajustar en Fase B: quitar si el modelo ya trae piso con collider
+                    floor.transform.SetParent(envRoot.transform, false);
+                    floor.transform.position = new Vector3(anchor.x, fallbackY, anchor.z);
+                    floor.transform.localScale = new Vector3(extent / 10f, 1f, extent / 10f);
+                    floor.GetComponent<MeshRenderer>().sharedMaterial = floorMat;
+                    Pending.Add($"{spec.Name}: revisar Fallback_Floor / Bounds_Walls (placeholder) contra el piso y las paredes reales del modelo.");
+                }
                 Physics.SyncTransforms();
             }
 
@@ -797,14 +878,18 @@ namespace Inkside.EditorTools
             Vector3 eye = spawnRoot + new Vector3(0f, EyeHeight, 0f);
             var playerRoot = playerInstance.transform;
 
-            // Props no-room (mesa, farol, asteroide), apoyados en el piso y esquivando geometría
+            // Props no-room (mesa, farol, cráteres), apoyados en el piso y esquivando geometría
             foreach (var prop in spec.Props.Where(p => !p.IsRoom))
             {
                 var go = InstantiateModel(prop.ModelPath, envRoot.transform);
                 if (go == null) continue;
+                if (!string.IsNullOrEmpty(prop.Name)) go.name = prop.Name;
                 FitSize(go, prop.TargetSize);
                 ApplyRotationOffset(go, prop.RotationOffset);
                 string note = PlaceClear(go, placeOrigin, facing, facingYaw, prop.Offset, prop.Yaw, true, eye, false, playerRoot);
+                if (prop.SinkFraction > 0f && TryGetBounds(go, out var sinkB))
+                    go.transform.position -= new Vector3(0f, sinkB.size.y * prop.SinkFraction, 0f);
+                if (prop.LampIntensity > 0f) AddLampLight(go, prop);
                 int colliders = AddMeshColliders(go);
                 if (TryGetBounds(go, out var b))
                     Report.AppendLine($"  Prop {go.name}: pos={F(go.transform.position)} scale={go.transform.localScale.x:0.###} size={F(b.size)} — {colliders} MeshCollider(s) [{note}]");
@@ -880,6 +965,10 @@ namespace Inkside.EditorTools
                 // Al NPC se le deja algo más de margen porque las mallas de personaje son angostas y de brazos
                 // separados: un AABB pegado al modelo deja huecos por donde el rayo se le escapa.
                 bool isNpc = item.Kind == Kind.Npc;
+                if (item.MatteMaterials)
+                    Report.AppendLine($"    {go.name}: {MatteMaterials(go, $"Assets/_Mundos/{spec.WorldFolder}/Materiales")} material(es) metálico(s) pasados a mate");
+                if (item.GlowIntensity > 0f) AddItemGlow(go, item.GlowIntensity, item.GlowColor);
+
                 var box = AddBoxCollider(go, false, isNpc ? 1.1f : 1.15f, isNpc ? 0.5f : 0.35f);
 
                 switch (item.Kind)
@@ -945,6 +1034,13 @@ namespace Inkside.EditorTools
                 }
 
                 TryGetBounds(go, out var b1);
+                if (!item.RequireLineOfSight)
+                {
+                    // Un objetivo "escondido" tiene que estar escondido de verdad desde el spawn.
+                    bool hidden = Occluded(eye, b1.center, go.transform, playerRoot);
+                    placeNote += hidden ? ", oculto desde el spawn" : ", (!) VISIBLE desde el spawn";
+                    if (!hidden) Pending.Add($"{spec.Name}: '{go.name}' debería quedar escondido y se ve desde el spawn.");
+                }
                 Report.AppendLine($"  {item.Kind} {go.name}: pos={F(go.transform.position)} dist={Vector3.Distance(eye, b1.center):0.0}m scale={go.transform.localScale.x:0.####} size(orig)={F(sizeBefore)} size(final)={F(b1.size)} collider={F(box.size)}{(box.isTrigger ? " trigger" : "")} [{placeNote}]");
                 Physics.SyncTransforms();
             }
@@ -961,7 +1057,9 @@ namespace Inkside.EditorTools
 
             // 6.b Tamano del jugador segun la regla de esta escena (se mide un personaje del mundo, asi que
             //     tiene que ir despues de crear los interactuables).
-            Report.AppendLine("  " + InksidePlayerSizer.Apply(scene));
+            // La escena todavía no está guardada, así que scene.name viene vacío: se pasa el nombre del spec.
+            // Sin esto la regla no se aplicaba y el jugador quedaba con el tamaño genérico del prefab.
+            Report.AppendLine("  " + InksidePlayerSizer.Apply(scene, spec.Name));
 
             // 6.c Reaplicar el acomodado manual (Fase B). Va al final a proposito: lo que se ajusto a mano
             //     gana sobre lo que calculo la fisica, que es justamente el punto de guardarlo.
@@ -989,32 +1087,338 @@ namespace Inkside.EditorTools
             Pending.Add($"{spec.Name}: verificar posiciones/escala reales de cada modelo y la Y de spawn del jugador.");
         }
 
+        // ================================================================== SUELO, CIELO, PAREDES AJUSTADAS
         /// <summary>
-        /// Cubo de estrellas que rodea el diorama. No lleva piso a la altura de juego: el suelo es el asteroide.
-        /// El piso del cubo queda muy abajo, sólo como red de seguridad.
+        /// Plano texturado grande y con collider. En El Principito es el piso jugable; en LotR es el suelo que se
+        /// ve más allá del diorama hasta el horizonte (y hace de piso de respaldo, a la altura del de antes).
         /// </summary>
-        static void BuildStarBox(Transform parent, float size, Material mat)
+        static GameObject BuildGround(SceneSpec spec, Transform parent, string name, Vector3 center)
         {
-            var box = new GameObject("Fondo_Estelar");
-            box.transform.SetParent(parent, false);
-            float t = 1f;
-            float h = size / 2f;
-            void Wall(string name, Vector3 center, Vector3 scale)
+            var mat = EnsureGroundMaterial(spec);
+            var ground = GameObject.CreatePrimitive(PrimitiveType.Plane); // 10 x 10 m, UV 0..1
+            ground.name = name;
+            ground.transform.SetParent(parent, false);
+            ground.transform.position = center;
+            ground.transform.localScale = new Vector3(spec.GroundSize / 10f, 1f, spec.GroundSize / 10f);
+            var mr = ground.GetComponent<MeshRenderer>();
+            mr.sharedMaterial = mat;
+            mr.shadowCastingMode = ShadowCastingMode.Off;
+            return ground;
+        }
+
+        static Material EnsureGroundMaterial(SceneSpec spec)
+        {
+            string path = $"Assets/_Mundos/{spec.WorldFolder}/Materiales/M_Suelo_{spec.Name}.mat";
+            var albedo = EnsureTextureImport(spec.GroundAlbedoPath, TextureKind.Albedo);
+            var normal = EnsureTextureImport(spec.GroundNormalPath, TextureKind.Normal);
+
+            var mat = LoadOrCreateMaterial(path, "Universal Render Pipeline/Lit", out bool created);
+            if (!created) return mat; // ya existe: se respeta lo que se haya retocado a mano en el Editor
+            mat.SetTexture("_BaseMap", albedo);
+            mat.SetColor("_BaseColor", Color.white);
+            // En URP/Lit el tiling de _BaseMap lo comparten todos los mapas (normal incluido).
+            float tiles = spec.GroundSize / Mathf.Max(0.1f, spec.GroundTileMeters);
+            mat.SetTextureScale("_BaseMap", new Vector2(tiles, tiles));
+            mat.SetFloat("_Metallic", 0f);
+            mat.SetFloat("_Smoothness", spec.GroundSmoothness);
+            if (normal != null)
             {
-                var c = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                c.name = name;
-                c.transform.SetParent(box.transform, false);
-                c.transform.localPosition = center;
-                c.transform.localScale = scale;
-                c.GetComponent<MeshRenderer>().sharedMaterial = mat;
+                mat.SetTexture("_BumpMap", normal);
+                mat.SetFloat("_BumpScale", 1f);
+                mat.EnableKeyword("_NORMALMAP");
             }
-            // TODO ajustar en Fase B: reemplazar el material por una textura real de estrellas/nebulosa (GDD 4.5)
-            Wall("Techo", new Vector3(0f, h, 0f), new Vector3(size, t, size));
-            Wall("Piso_Lejano", new Vector3(0f, -h, 0f), new Vector3(size, t, size));
-            Wall("Pared_N", new Vector3(0f, 0f, h), new Vector3(size, size, t));
-            Wall("Pared_S", new Vector3(0f, 0f, -h), new Vector3(size, size, t));
-            Wall("Pared_E", new Vector3(h, 0f, 0f), new Vector3(t, size, size));
-            Wall("Pared_O", new Vector3(-h, 0f, 0f), new Vector3(t, size, size));
+            else
+            {
+                mat.SetTexture("_BumpMap", null);
+                mat.DisableKeyword("_NORMALMAP");
+            }
+            EditorUtility.SetDirty(mat);
+            return mat;
+        }
+
+        /// <summary>Cielo panorámico (equirectangular) + niebla lineal. Sin SkyboxPath queda el cielo por defecto.</summary>
+        static void ApplySkyAndFog(SceneSpec spec, Light sun)
+        {
+            if (!string.IsNullOrEmpty(spec.SkyboxPath))
+            {
+                var tex = EnsureTextureImport(spec.SkyboxPath, TextureKind.Sky);
+                var mat = LoadOrCreateMaterial($"Assets/_Mundos/{spec.WorldFolder}/Materiales/M_Skybox_{spec.Name}.mat", "Skybox/Panoramic", out bool created);
+                RenderSettings.skybox = mat;
+                if (!created)
+                {
+                    // Ya existe: se respeta lo retocado a mano (exposición, rotación). Para regenerarlo, borrar el .mat.
+                    Report.AppendLine($"  Cielo: {mat.name} (existente, sin tocar) rotación {mat.GetFloat("_Rotation"):0.#}°");
+                }
+                else
+                {
+                    mat.SetTexture("_MainTex", tex);
+                    mat.SetFloat("_Exposure", spec.SkyboxExposure);
+                    mat.SetColor("_Tint", new Color(0.5f, 0.5f, 0.5f)); // 0.5 = neutro en este shader
+                    // El KeywordEnum del shader no se activa solo al crear el material por código.
+                    mat.SetFloat("_Mapping", 1f);
+                    mat.EnableKeyword("_MAPPING_LATITUDE_LONGITUDE_LAYOUT");
+                    mat.DisableKeyword("_MAPPING_6_FRAMES_LAYOUT");
+                    mat.SetFloat("_ImageType", 0f); // 360°
+                    float rotation = spec.SkyboxSunU >= 0f ? SkyboxRotationForSun(spec.SkyboxSunU, sun.transform.rotation) : 0f;
+                    mat.SetFloat("_Rotation", rotation);
+                    EditorUtility.SetDirty(mat);
+                    Report.AppendLine($"  Cielo: {Path.GetFileName(spec.SkyboxPath)} exposición {spec.SkyboxExposure:0.##} rotación {rotation:0.#}°");
+                }
+            }
+
+            RenderSettings.fog = spec.FogEnd > 0f;
+            if (RenderSettings.fog)
+            {
+                RenderSettings.fogMode = FogMode.Linear;
+                RenderSettings.fogColor = spec.FogColor;
+                RenderSettings.fogStartDistance = spec.FogStart;
+                RenderSettings.fogEndDistance = spec.FogEnd;
+            }
+        }
+
+        /// <summary>
+        /// Giro del Skybox/Panoramic que pone el sol de la imagen (columna U) en la dirección real de la luz.
+        /// El shader lee U = 0.5 - atan2(z, x) / 2π sobre la dirección de vista girada _Rotation grados en Y,
+        /// así que el giro es el azimut de la imagen menos el real. (Verificado renderizando sólo el cielo:
+        /// con el signo al revés el sol quedaba corrido el doble del giro.)
+        /// </summary>
+        static float SkyboxRotationForSun(float sunU, Quaternion lightRotation)
+        {
+            Vector3 toSun = -(lightRotation * Vector3.forward);
+            float worldAzimuth = Mathf.Atan2(toSun.z, toSun.x) * Mathf.Rad2Deg;
+            float imageAzimuth = (0.5f - sunU) * 360f;
+            return Mathf.Repeat(imageAzimuth - worldAzimuth, 360f);
+        }
+
+        /// <summary>
+        /// Paredes invisibles que siguen el borde real del terreno de los rooms. Se tiran rayos hacia abajo en
+        /// abanico desde el centro y, en cada dirección, el borde es el último punto con terreno del modelo antes
+        /// del primer hueco. La pared queda <paramref name="inset"/> metros hacia adentro de ese borde. El borde de
+        /// cada dirección se toma como el mínimo con sus vecinas, así la pared nunca corta por fuera del terreno.
+        /// </summary>
+        static string BuildFittedWalls(Transform parent, List<GameObject> rooms, Vector3 baseCenter, float height, float inset)
+        {
+            const int Directions = 48;
+            const float Step = 0.25f;
+            Physics.SyncTransforms();
+
+            Bounds rb = default;
+            bool any = false;
+            foreach (var r in rooms)
+                if (TryGetBounds(r, out var b)) { rb = any ? Encapsulate(rb, b) : b; any = true; }
+            if (!any) return "(!) paredes ajustadas: los rooms no tienen renderers";
+
+            var center = new Vector3(rb.center.x, 0f, rb.center.z);
+            float maxR = new Vector2(rb.extents.x, rb.extents.z).magnitude + 2f;
+            float top = rb.max.y + 5f;
+            float length = top - (rb.min.y - 5f);
+
+            bool HitsRoom(Vector3 xz)
+            {
+                foreach (var hit in Physics.RaycastAll(new Vector3(xz.x, top, xz.z), Vector3.down, length, ~0, QueryTriggerInteraction.Ignore))
+                    foreach (var r in rooms)
+                        if (hit.transform.IsChildOf(r.transform)) return true;
+                return false;
+            }
+
+            var edge = new float[Directions];
+            var dirs = new Vector3[Directions];
+            for (int i = 0; i < Directions; i++)
+            {
+                dirs[i] = Quaternion.Euler(0f, i * 360f / Directions, 0f) * Vector3.forward;
+                float last = 0f;
+                for (float r = 0f; r <= maxR; r += Step)
+                {
+                    if (HitsRoom(center + dirs[i] * r)) last = r;
+                    else if (r > 1f) break;
+                }
+                edge[i] = last;
+            }
+
+            var radius = new float[Directions];
+            for (int i = 0; i < Directions; i++)
+            {
+                float e = Mathf.Min(edge[i], Mathf.Min(edge[(i + Directions - 1) % Directions], edge[(i + 1) % Directions]));
+                radius[i] = Mathf.Max(1.5f, e - inset);
+            }
+
+            var root = new GameObject("Bounds_Walls"); // colliders invisibles en el borde del terreno (GDD 4.5)
+            root.transform.SetParent(parent, false);
+            root.transform.position = new Vector3(center.x, baseCenter.y, center.z);
+            const float Thickness = 0.4f;
+            for (int i = 0; i < Directions; i++)
+            {
+                int j = (i + 1) % Directions;
+                var p0 = dirs[i] * radius[i];
+                var p1 = dirs[j] * radius[j];
+                var seg = p1 - p0;
+                var w = new GameObject($"Wall_{i:00}");
+                w.transform.SetParent(root.transform, false);
+                w.transform.localPosition = (p0 + p1) * 0.5f + new Vector3(0f, height / 2f, 0f);
+                w.transform.localRotation = Quaternion.LookRotation(seg.normalized, Vector3.up);
+                var bc = w.AddComponent<BoxCollider>();
+                bc.size = new Vector3(Thickness, height, seg.magnitude + Thickness); // solapadas: sin rendijas en las esquinas
+            }
+            Physics.SyncTransforms();
+            return $"Paredes ajustadas al terreno: borde a {edge.Min():0.0}-{edge.Max():0.0} m del centro, paredes a {radius.Min():0.0}-{radius.Max():0.0} m ({Directions} tramos, {inset:0.#} m hacia adentro)";
+        }
+
+        /// <summary>
+        /// Luz puntual chica encima de un objetivo, hermana del objeto (no hija: al recogerlo se desactiva su
+        /// visual). La Rosa queda detrás del cráter, de espaldas a la luz direccional, y sin esto se ve negra.
+        /// </summary>
+        internal static Light AddItemGlow(GameObject go, float intensity, Color color)
+        {
+            if (!TryGetBounds(go, out var b)) return null;
+            var glowGO = new GameObject(go.name + "_Luz");
+            glowGO.transform.SetParent(go.transform.parent, false);
+            glowGO.transform.position = new Vector3(b.center.x, b.max.y + Mathf.Max(0.4f, b.size.y * 0.5f), b.center.z);
+            var light = glowGO.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = color;
+            light.intensity = intensity;
+            light.range = Mathf.Max(2.5f, b.size.y * 4f);
+            light.shadows = LightShadows.None;
+            light.lightmapBakeType = LightmapBakeType.Realtime;
+            return light;
+        }
+
+        /// <summary>
+        /// Reemplaza los materiales metálicos del modelo por copias sin metálico. Sin reflection probes horneados
+        /// (iluminación 100% realtime) un material metálico no tiene nada que reflejar y se ve negro: le pasaba a la
+        /// campana de vidrio de la Rosa (metálico 0,77), que tapaba la flor. Las copias se crean UNA vez en
+        /// <paramref name="folder"/> y después se pueden retocar a mano: el builder no las pisa.
+        /// </summary>
+        internal static int MatteMaterials(GameObject go, string folder)
+        {
+            EnsureFolder(folder);
+            int replaced = 0;
+            foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+            {
+                var mats = r.sharedMaterials;
+                bool changed = false;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    var m = mats[i];
+                    if (m == null) continue;
+                    float metallic = m.HasProperty("metallicFactor") ? m.GetFloat("metallicFactor")
+                                   : m.HasProperty("_Metallic") ? m.GetFloat("_Metallic") : 0f;
+                    if (metallic <= 0.05f) continue;
+
+                    string safe = string.Concat(m.name.Select(c => char.IsLetterOrDigit(c) || c == '_' ? c : '_'));
+                    string path = $"{folder}/M_{go.name}_{safe}_Mate.mat";
+                    var copy = AssetDatabase.LoadAssetAtPath<Material>(path);
+                    if (copy == null)
+                    {
+                        copy = new Material(m);
+                        if (copy.HasProperty("metallicFactor")) copy.SetFloat("metallicFactor", 0f);
+                        if (copy.HasProperty("_Metallic")) copy.SetFloat("_Metallic", 0f);
+                        AssetDatabase.CreateAsset(copy, path);
+                    }
+                    mats[i] = copy;
+                    changed = true;
+                    replaced++;
+                }
+                if (changed) r.sharedMaterials = mats;
+            }
+            return replaced;
+        }
+
+        /// <summary>Luz puntual en la parte alta del modelo (el farol de El Principito).</summary>
+        static void AddLampLight(GameObject go, PropSpec prop)
+        {
+            if (!TryGetBounds(go, out var b)) return;
+            var lightGO = new GameObject(go.name + "_Luz");
+            lightGO.transform.SetParent(go.transform.parent, false);
+            lightGO.transform.position = new Vector3(b.center.x, b.max.y - b.size.y * 0.12f, b.center.z);
+            var light = lightGO.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = prop.LampColor;
+            light.intensity = prop.LampIntensity;
+            light.range = prop.LampRange;
+            light.shadows = LightShadows.Soft;
+            light.lightmapBakeType = LightmapBakeType.Realtime;
+        }
+
+        enum TextureKind { Albedo, Normal, Sky }
+
+        /// <summary>
+        /// Deja la textura con los ajustes de importación que necesita su uso. Los tamaños máximos son el control
+        /// de memoria: el archivo puede ser de 4K u 8K, pero en la placa de video entra a lo sumo a este tamaño.
+        /// </summary>
+        static Texture EnsureTextureImport(string path, TextureKind kind)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+            var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer == null)
+            {
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
+                importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            }
+            if (importer == null)
+            {
+                _errors++;
+                Debug.LogError($"[InksideSceneBuilder] No existe la textura {path}");
+                return null;
+            }
+
+            var type = kind == TextureKind.Normal ? TextureImporterType.NormalMap : TextureImporterType.Default;
+            int maxSize = kind == TextureKind.Sky ? 4096 : 2048;
+            bool mips = kind != TextureKind.Sky; // un panorama con mipmaps muestra una costura en la unión de los bordes
+            var compression = TextureImporterCompression.CompressedHQ;
+            int aniso = kind == TextureKind.Sky ? 0 : 8; // el suelo se ve casi siempre en ángulo rasante
+
+            bool needsReimport =
+                importer.textureType != type ||
+                importer.maxTextureSize != maxSize ||
+                importer.mipmapEnabled != mips ||
+                importer.textureCompression != compression ||
+                importer.anisoLevel != aniso ||
+                importer.wrapModeU != TextureWrapMode.Repeat ||
+                importer.wrapModeV != (kind == TextureKind.Sky ? TextureWrapMode.Clamp : TextureWrapMode.Repeat);
+            if (needsReimport)
+            {
+                importer.textureType = type;
+                importer.textureShape = TextureImporterShape.Texture2D;
+                importer.maxTextureSize = maxSize;
+                importer.mipmapEnabled = mips;
+                importer.textureCompression = compression;
+                importer.anisoLevel = aniso;
+                importer.wrapModeU = TextureWrapMode.Repeat;
+                importer.wrapModeV = kind == TextureKind.Sky ? TextureWrapMode.Clamp : TextureWrapMode.Repeat;
+                if (kind != TextureKind.Normal) importer.sRGBTexture = true;
+                importer.SaveAndReimport();
+                Log($"Textura {Path.GetFileName(path)}: {kind}, máx {maxSize}, {compression}.");
+            }
+            return AssetDatabase.LoadAssetAtPath<Texture>(path);
+        }
+
+        /// <summary>
+        /// Carga el material o lo crea con ese shader. Sus propiedades se fijan sólo al crearlo (created = true):
+        /// después se retocan a mano en el Editor y el builder no las pisa. Para volver a los valores de las
+        /// specs, borrar el .mat y rebuildear.
+        /// </summary>
+        static Material LoadOrCreateMaterial(string path, string shaderName, out bool created)
+        {
+            created = false;
+            var shader = Shader.Find(shaderName);
+            if (shader == null)
+            {
+                _errors++;
+                Debug.LogError($"[InksideSceneBuilder] No se encontró el shader {shaderName}");
+                shader = Shader.Find("Universal Render Pipeline/Lit");
+            }
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (mat != null)
+            {
+                if (mat.shader != shader) mat.shader = shader;
+                return mat;
+            }
+            EnsureFolder(Path.GetDirectoryName(path).Replace('\\', '/'));
+            mat = new Material(shader);
+            AssetDatabase.CreateAsset(mat, path);
+            created = true;
+            return mat;
         }
 
 
@@ -1042,11 +1446,11 @@ namespace Inkside.EditorTools
         {
             var sunGO = new GameObject("Directional Light");
             sunGO.transform.SetParent(parent, false);
-            sunGO.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+            sunGO.transform.rotation = Quaternion.Euler(spec.SunEuler);
             var sun = sunGO.AddComponent<Light>();
             sun.type = LightType.Directional;
             sun.color = spec.LightColor;
-            sun.intensity = spec.SpaceRoombox ? 0.6f : 1.1f;
+            sun.intensity = spec.SunIntensity;
             sun.shadows = LightShadows.Soft;
             sun.lightmapBakeType = LightmapBakeType.Realtime;
 
@@ -1059,7 +1463,7 @@ namespace Inkside.EditorTools
             // La direccional queda bloqueada por el techo en los interiores cerrados, así que la point light es
             // la que realmente ilumina: su intensidad y alcance tienen que crecer con el tamaño de la sala.
             float room = Mathf.Max(envSize.x, envSize.z);
-            point.intensity = Mathf.Lerp(2.5f, 8f, Mathf.InverseLerp(5f, 24f, room));
+            point.intensity = spec.FocoIntensity >= 0f ? spec.FocoIntensity : Mathf.Lerp(2.5f, 8f, Mathf.InverseLerp(5f, 24f, room));
             point.range = Mathf.Max(10f, room * 1.1f);
             point.shadows = LightShadows.None;
             point.lightmapBakeType = LightmapBakeType.Realtime;
@@ -1067,7 +1471,7 @@ namespace Inkside.EditorTools
             RenderSettings.sun = sun;
             RenderSettings.ambientMode = AmbientMode.Flat;
             RenderSettings.ambientLight = spec.AmbientColor;
-            RenderSettings.fog = false;
+            ApplySkyAndFog(spec, sun);
             if (lightingSettings != null) Lightmapping.lightingSettings = lightingSettings;
 
             // Global Volume con Bloom + Color Adjustments sutil

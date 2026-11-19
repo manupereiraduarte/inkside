@@ -45,7 +45,7 @@ Acción: apuntar a un libro + `[E]` → `book_page_turn.mp3` → fundido a negro
 
 ### Acto 2: La Soledad del Asteroide B-612 (*El Principito*) 🔄
 
-**Escenario:** cubo con fondo espacial. No se consiguió un modelo dedicado de "superficie de asteroide rocoso" — se reutiliza `asteroide_superficie.glb` (un modelo de luna) como terreno del diorama por su parecido visual. Es una decisión de producción definitiva, no un placeholder. Se agrega también `farol_calle.glb` (farol de calle antiguo), que sí estaba en el catálogo original.
+**Escenario:** suelo lunar plano bajo un cielo de estrellas. El piso es un plano con textura de regolito (`moon_01` de Poly Haven) encerrado por paredes invisibles, y el relieve lo dan varias "lunitas" medio enterradas que asoman como cúpulas de cráter: se reutiliza `asteroide_superficie.glb` (un modelo de luna). La Rosa queda escondida detrás de la cúpula más grande, así que hay que rodearla para encontrarla. Se mantiene `farol_calle.glb`, que ahora tiene luz propia y es la luz cálida del diorama. (La versión anterior usaba la luna como un asteroide esférico caminable, pero el jugador bajaba por la curvatura y se caía al vacío.)
 
 **Sonido ambiental:** `space_ambient_pad.mp3` (sin cambios).
 
@@ -104,6 +104,8 @@ Reemplaza al catálogo "mínimo viable" del GDD original por el inventario real 
 | Tarjeta de diálogo de Gandalf | `Texturas/dialogo_gandalf.jpg` | ✅ 2752×1536, texto incluido |
 | Ambiente: pájaros/campo | `Audio/Ambiente/countryside_birds_ambient.mp3` | ✅ |
 | Crepitar de chimenea | — | 🚫 descartado a propósito (el modelo no tiene chimenea) |
+| Skybox de campo (HDRI) | `Texturas/skybox_comarca_campo_4k.hdr` | ✅ Poly Haven `hilly_terrain_01`, CC0 |
+| Pasto del suelo lejano | `Texturas/pasto_lejano_tile.png` | ✅ generada por código (ruido verde que se repite) |
 
 ### MUNDO 02 — El Principito (`Assets/_Mundos/02_Principito/`)
 
@@ -116,7 +118,8 @@ Reemplaza al catálogo "mínimo viable" del GDD original por el inventario real 
 | SFX: campanillas de cristal | `Audio/SFX/glass_sparkle.mp3` | ✅ |
 | Tarjeta de diálogo del Zorro | `Texturas/dialogo_zorro.jpg` | ✅ 2752×1536, texto incluido |
 | Ambiente: sintetizador espacial | `Audio/Ambiente/space_ambient_pad.mp3` | ✅ |
-| Skybox espacial / textura de suelo | `Texturas/` | ❌ a confirmar si el material ya viene embebido en los `.glb` |
+| Skybox de estrellas | `Texturas/skybox_espacio_estrellas_8k.jpg` | ✅ Solar System Scope, CC BY 4.0 |
+| Textura de suelo lunar | `Texturas/SueloLunar/suelo_lunar_*_4k.*` | ✅ Poly Haven `moon_01`, CC0 |
 
 ### MUNDO 03 — Harry Potter / Oficina de Dumbledore (`Assets/_Mundos/03_HarryPotter/`)
 
@@ -237,7 +240,8 @@ No existía como script en el GDD original (solo se mencionaba narrativamente "l
 Cada mundo (excepto la Biblioteca, que puede ser una sala más abierta) es un cubo cerrado. Dos casos:
 
 - **Con modelo de interior ya modelado** (`hobbit_house.glb`, `dumbledores_office.glb`, `library.glb`): el cubo ya viene resuelto visualmente dentro del propio modelo importado, pero **ningún importador de Unity (tampoco glTFast) agrega colliders automáticamente** — hay que agregar explícitamente un `MeshCollider` (con `convex = false`, es geometría estática) al mesh del interior después de instanciarlo, o el jugador atraviesa las paredes/el piso directamente.
-- **Sin modelo de interior** (El Principito: "cubo con textura de vacío cósmico"): se arma un cubo real en Unity con las caras normales invertidas hacia adentro (o 6 planos formando una caja), con un material de estrellas/nebulosa aplicado a las caras interiores. **Importante:** esto es un material sobre geometría local de la escena, no el Skybox del proyecto (`Window > Rendering > Lighting > Environment`) — el Skybox es para exteriores a cielo abierto, acá es el interior de una caja cerrada.
+- **Sin modelo de interior** (El Principito): suelo plano texturado + paredes invisibles, y el fondo es un **Skybox panorámico de estrellas** (`Skybox/Panoramic`). Se descartó la caja de 6 planos con material de estrellas que proponía la v1: con el suelo plano se le veían las aristas y las costuras. El borde del plano se funde a negro con niebla lineal, así no se nota dónde termina contra el cielo.
+- **Exteriores a cielo abierto** (LotR): el modelo es un diorama de terreno que termina en un borde irregular. El fondo es un **HDRI de campo** como Skybox, y un plano de pasto grande a la altura del piso que la niebla funde con el horizonte del HDRI, para que parezca que el mundo sigue. Las paredes invisibles siguen el borde real del terreno (sondeo radial en el builder), un metro hacia adentro.
 
 En todos los casos: agregar colliders invisibles en los límites del cubo para que el jugador no pueda salir del diorama (paso explícito del roadmap original).
 
